@@ -1,0 +1,183 @@
+# National chains and franchises. One name per line; matching ignores case and punctuation.
+# A business whose name contains one of these is skipped (they have head-office websites).
+# Add any you spot in your searches.
+
+# Plumbing, heating, drains, trades
+British Gas
+HomeServe
+Pimlico Plumbers
+Dyno
+Dyno-Rod
+Metro Rod
+Lanes Group
+Drain Doctor
+Mr. Electric
+Mr Handyman
+Aspect
+Checkatrade
+Rated People
+MyBuilder
+Bark.com
+Wickes
+B&Q
+Screwfix
+Toolstation
+Travis Perkins
+Jewson
+Selco
+Plumbase
+City Plumbing
+Graham Plumbers Merchant
+Wolseley
+Howdens
+Magnet
+Benchmarx
+Topps Tiles
+CEF
+Edmundson Electrical
+Rexel
+Rentokil
+Pestforce
+Anglian Home Improvements
+Everest
+Safestyle
+Timpson
+Banham
+ChipsAway
+Kwik Fit
+Halfords
+National Tyres
+ATS Euromaster
+Formula One Autocentres
+Mr Clutch
+Mobile Tyre Shop
+
+# Cleaning
+Molly Maid
+Merry Maids
+Maid2Clean
+Time for You
+Poppies
+Swift Clean
+Ovenclean
+Oven Wizards
+Chem-Dry
+Diamond Clean
+The Ironing Lady
+Fantastic Services
+Helpling
+
+# Removals
+Pickfords
+Britannia Movers
+Bishop's Move
+Two Men and a Truck
+
+# Estate agents and lettings
+Foxtons
+Purplebricks
+Connells
+Countrywide
+Your Move
+Reeds Rains
+Hamptons
+Savills
+Knight Frank
+Winkworth
+Leaders
+Martin & Co
+Belvoir
+Hunters
+Northwood
+Haart
+Bairstow Eves
+Fox & Sons
+Mann
+Romans
+Andrews
+Stirling Ackroyd
+Strutt & Parker
+Barnard Marcus
+Douglas & Gordon
+Kinleigh Folkard & Hayward
+Your Move
+Abode
+
+# Barbers, hair and beauty
+Toni & Guy
+Toni&Guy
+Rush Hair
+Supercuts
+Regis
+Headmasters
+Saks
+Tommy Guns
+Ruger Barber
+Pall Mall Barbers
+Jacks of London
+Hair by Wolf
+Lisa Shepherd
+Sanctuary Spa
+Benefit Brow Bar
+Strip Wax Bar
+Nails Inc
+Sk:n
+Therapie Clinic
+Wax Lyrical
+
+# Driving, fitness, health
+AA Driving School
+BSM
+RED Driving School
+PureGym
+The Gym Group
+Anytime Fitness
+Snap Fitness
+Nuffield Health
+David Lloyd
+Virgin Active
+Bannatyne
+Specsavers
+Boots
+Mydentist
+Bupa Dental
+Ten Health
+
+# Food and florists
+Greggs
+Costa
+Starbucks
+Caffe Nero
+Pret A Manger
+Subway
+Domino's
+Papa John's
+Pizza Hut
+McDonald's
+KFC
+Burger King
+Five Guys
+Nando's
+Wagamama
+Interflora
+Bloom & Wild
+Moonpig
+Patisserie Valerie
+Paul Bakery
+Cooplands
+Birds Bakery
+Warrens Bakery
+
+# Accountants and professional
+TaxAssist
+Ascentis
+H&R Block
+Crunch
+Quality Solicitors
+Slater and Gordon
+Irwin Mitchell
+
+# Pets
+Pets at Home
+The Groom Room
+Barking Mad

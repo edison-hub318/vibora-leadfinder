@@ -1,0 +1,15 @@
+.env
+leads.db
+leads.db-*
+*.db-journal
+backups/
+previews/
+.leadfinder-user.json
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+build/
+dist/
+leads.csv

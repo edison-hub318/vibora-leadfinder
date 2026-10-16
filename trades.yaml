@@ -1,0 +1,321 @@
+# Trades for the lead search. Edit freely - the dashboard and CLI read this file every time.
+#
+# Each trade has:
+#   label     - how it's shown
+#   family    - which preview-site template to use: trades | beauty | food | professional | generic
+#   synonyms  - extra Google queries tried when the main one doesn't find enough leads
+#   types     - Google place "primaryType" values that count as this trade
+#   keywords  - words in a business name that count as this trade (lower case)
+#   services  - generic services listed on the preview site
+#
+# A trade that isn't listed here still searches: the typed text is used as the query and
+# the category check is skipped.
+
+plumbers:
+  label: Plumbers
+  family: trades
+  synonyms: [plumbing services, emergency plumber, heating engineer, boiler repair]
+  types: [plumber]
+  keywords: [plumb, heating, boiler, drain, bathroom, gas]
+  services: [Leaks and burst pipes, Boiler servicing and repairs, Bathroom installations, Emergency call-outs]
+electricians:
+  label: Electricians
+  family: trades
+  synonyms: [electrical contractor, emergency electrician, electrical services]
+  types: [electrician]
+  keywords: [electric, electrical, sparky, wiring, lighting]
+  services: [Rewires and new circuits, Fuse board upgrades, EICR safety certificates, Lighting and sockets]
+roofers:
+  label: Roofers
+  family: trades
+  synonyms: [roofing contractor, roof repair, flat roofing, guttering]
+  types: [roofing_contractor]
+  keywords: [roof, roofing, gutter, slate]
+  services: [Roof repairs, Flat roofs, Guttering and fascias, Chimney work]
+builders:
+  label: Builders
+  family: trades
+  synonyms: [building contractor, extension builder, renovation company]
+  types: [general_contractor]
+  keywords: [build, builders, construction, extension, renovation]
+  services: [Extensions, Loft conversions, Renovations, Groundworks]
+carpenters:
+  label: Carpenters
+  family: trades
+  synonyms: [joiner, carpentry services, bespoke joinery]
+  types: [carpenter, general_contractor]
+  keywords: [carpent, joiner, joinery, timber, wood]
+  services: [Doors and skirting, Bespoke storage, Staircases, Decking]
+painters_decorators:
+  label: Painters & decorators
+  family: trades
+  synonyms: [painter and decorator, painting services, decorators]
+  types: [painter]
+  keywords: [paint, decorat]
+  services: [Interior painting, Exterior painting, Wallpapering, Commercial decorating]
+plasterers:
+  label: Plasterers
+  family: trades
+  synonyms: [plastering services, skimming, rendering]
+  types: [plasterer, general_contractor]
+  keywords: [plaster, render, skim]
+  services: [Skimming, Re-plastering, External rendering, Coving]
+tilers:
+  label: Tilers
+  family: trades
+  synonyms: [tiling services, bathroom tiler, floor tiler]
+  types: [general_contractor]
+  keywords: [tile, tiling, tiler]
+  services: [Bathroom tiling, Kitchen splashbacks, Floor tiling, Wet rooms]
+locksmiths:
+  label: Locksmiths
+  family: trades
+  synonyms: [emergency locksmith, lock repair, auto locksmith]
+  types: [locksmith]
+  keywords: [lock, locksmith, key]
+  services: [Emergency lock-outs, Lock changes, UPVC door repairs, Security upgrades]
+landscapers:
+  label: Landscapers
+  family: trades
+  synonyms: [landscaping, landscape gardener, patio installer]
+  types: [landscaper, landscaping]
+  keywords: [landscap, garden, patio, paving]
+  services: [Patios and paving, Turfing, Fencing, Garden design]
+gardeners:
+  label: Gardeners
+  family: trades
+  synonyms: [gardening services, garden maintenance, lawn care]
+  types: [landscaper, landscaping]
+  keywords: [garden, lawn, hedge, grounds]
+  services: [Lawn mowing, Hedge trimming, Garden clearance, Regular maintenance]
+tree_surgeons:
+  label: Tree surgeons
+  family: trades
+  synonyms: [tree surgery, arborist, tree felling, stump grinding]
+  types: [landscaper]
+  keywords: [tree, arbor, stump]
+  services: [Tree felling, Crown reduction, Stump grinding, Hedge work]
+cleaners:
+  label: Cleaners
+  family: trades
+  synonyms: [cleaning services, domestic cleaner, office cleaning, end of tenancy cleaning]
+  types: [house_cleaning_service, cleaning_service]
+  keywords: [clean, maid, spotless, sparkle]
+  services: [Regular home cleans, End of tenancy, Office cleaning, Deep cleans]
+window_cleaners:
+  label: Window cleaners
+  family: trades
+  synonyms: [window cleaning, gutter cleaning, conservatory cleaning]
+  types: [cleaning_service, house_cleaning_service]
+  keywords: [window, glass, gutter]
+  services: [Window cleaning, Gutter clearing, Conservatory roofs, Fascias and soffits]
+pest_control:
+  label: Pest control
+  family: trades
+  synonyms: [pest control services, rat catcher, wasp nest removal, exterminator]
+  types: [pest_control_service]
+  keywords: [pest, rat, wasp, rodent, vermin]
+  services: [Rats and mice, Wasp nests, Insects, Bird proofing]
+removals:
+  label: Removals
+  family: trades
+  synonyms: [removal company, man and van, house removals]
+  types: [moving_company]
+  keywords: [remov, van, moving, storage]
+  services: [House moves, Man and van, Packing, Storage]
+mechanics:
+  label: Mechanics
+  family: trades
+  synonyms: [car garage, car repair, mot centre, mobile mechanic]
+  types: [car_repair, auto_repair]
+  keywords: [garage, motor, mechanic, mot, auto, tyre, car]
+  services: [MOTs, Servicing, Diagnostics, Brakes and clutches]
+car_valeting:
+  label: Car valeting
+  family: trades
+  synonyms: [car valet, mobile valeting, car detailing]
+  types: [car_wash, car_detailing]
+  keywords: [valet, detail, car wash, shine]
+  services: [Full valets, Mini valets, Detailing, Ceramic coating]
+driving_instructors:
+  label: Driving instructors
+  family: professional
+  synonyms: [driving school, driving lessons, intensive driving course]
+  types: [driving_school]
+  keywords: [driving, drive, school of motoring, lessons]
+  services: [Beginner lessons, Intensive courses, Pass Plus, Refresher lessons]
+barbers:
+  label: Barbers
+  family: beauty
+  synonyms: [barber shop, mens haircut, barbers shop]
+  types: [barber_shop]
+  keywords: [barber, barbers, fade, gents, cuts]
+  services: [Skin fades, Beard trims, Hot towel shaves, Kids cuts]
+hairdressers:
+  label: Hairdressers
+  family: beauty
+  synonyms: [hair salon, hair stylist, hairdressing]
+  types: [hair_salon, hair_care, beauty_salon]
+  keywords: [hair, salon, stylist, cuts]
+  services: [Cut and finish, Colour, Balayage, Blow-dries]
+beauty_salons:
+  label: Beauty salons
+  family: beauty
+  synonyms: [beauty therapist, beautician, aesthetics clinic]
+  types: [beauty_salon, spa, skin_care_clinic]
+  keywords: [beauty, aesthetic, skin, lash, brow, spa]
+  services: [Facials, Lashes and brows, Waxing, Massage]
+nail_salons:
+  label: Nail salons
+  family: beauty
+  synonyms: [nail technician, nail bar, gel nails]
+  types: [nail_salon, beauty_salon]
+  keywords: [nail]
+  services: [Gel manicures, Acrylics, Pedicures, Nail art]
+tattoo_studios:
+  label: Tattoo studios
+  family: beauty
+  synonyms: [tattoo parlour, tattoo artist]
+  types: [tattoo_shop, body_art_service]
+  keywords: [tattoo, ink, piercing]
+  services: [Custom designs, Cover-ups, Fine line, Piercing]
+dog_groomers:
+  label: Dog groomers
+  family: beauty
+  synonyms: [dog grooming, pet groomer, mobile dog groomer]
+  types: [pet_care, pet_groomer, pet_store]
+  keywords: [groom, dog, pet, paws, pooch, k9]
+  services: [Full grooms, Bath and brush, Puppy intro, Nail clipping]
+personal_trainers:
+  label: Personal trainers
+  family: professional
+  synonyms: [personal training, fitness coach, pt studio]
+  types: [gym, fitness_center, personal_trainer]
+  keywords: [fitness, pt, train, strength, gym, coach]
+  services: [One-to-one sessions, Small groups, Nutrition plans, Online coaching]
+physiotherapists:
+  label: Physiotherapists
+  family: professional
+  synonyms: [physiotherapy, sports massage, physio clinic]
+  types: [physiotherapist]
+  keywords: [physio, sports massage, rehab, osteo, chiro]
+  services: [Sports injuries, Back and neck pain, Rehab plans, Sports massage]
+florists:
+  label: Florists
+  family: food
+  synonyms: [flower shop, wedding florist, flower delivery]
+  types: [florist]
+  keywords: [flower, florist, floral, bloom, petal]
+  services: [Bouquets, Wedding flowers, Funeral tributes, Local delivery]
+cafes:
+  label: Cafes
+  family: food
+  synonyms: [coffee shop, tea room, brunch cafe]
+  types: [cafe, coffee_shop, tea_house, breakfast_restaurant]
+  keywords: [cafe, coffee, tea, brunch, kitchen]
+  services: [Breakfast, Lunch, Coffee and cakes, Catering]
+bakeries:
+  label: Bakeries
+  family: food
+  synonyms: [bakery, cake maker, artisan bakery]
+  types: [bakery]
+  keywords: [bake, bakery, cake, bread, patisserie]
+  services: [Fresh bread, Celebration cakes, Pastries, Wholesale]
+takeaways:
+  label: Takeaways
+  family: food
+  synonyms: [takeaway food, fish and chips, pizza takeaway, indian takeaway]
+  types: [meal_takeaway, fast_food_restaurant, pizza_restaurant, indian_restaurant, chinese_restaurant]
+  keywords: [takeaway, pizza, kebab, chip, fish bar, grill, express]
+  services: [Collection, Local delivery, Family meal deals, Catering]
+accountants:
+  label: Accountants
+  family: professional
+  synonyms: [accountancy firm, bookkeeper, tax advisor]
+  types: [accounting]
+  keywords: [account, bookkeep, tax, payroll]
+  services: [Self assessment, Bookkeeping, Year-end accounts, Payroll]
+kitchen_fitters:
+  label: Kitchen fitters
+  family: trades
+  synonyms: [kitchen installation, kitchen fitting, kitchen design]
+  types: [general_contractor]
+  keywords: [kitchen]
+  services: [Full kitchen installs, Worktops, Kitchen design, Appliance fitting]
+scaffolders:
+  label: Scaffolders
+  family: trades
+  synonyms: [scaffolding hire, scaffolding contractor]
+  types: [general_contractor]
+  keywords: [scaffold]
+  services: [Domestic scaffolding, Commercial scaffolding, Temporary roofs, Chimney access]
+fencing_contractors:
+  label: Fencing contractors
+  family: trades
+  synonyms: [fence installer, fencing services, garden fencing]
+  types: [fence_contractor, general_contractor, landscaper]
+  keywords: [fenc, gate]
+  services: [Panel fencing, Close-board fencing, Gates, Repairs]
+handymen:
+  label: Handymen
+  family: trades
+  synonyms: [handyman services, odd job man, property maintenance]
+  types: [handyman, general_contractor]
+  keywords: [handy, odd job, maintenance, property services, fix]
+  services: [Flat-pack assembly, Small repairs, Shelves and TVs, Property maintenance]
+bathroom_fitters:
+  label: Bathroom fitters
+  family: trades
+  synonyms: [bathroom installation, bathroom renovation, wet room installer]
+  types: [plumber, general_contractor]
+  keywords: [bathroom, wet room, shower]
+  services: [Full bathroom refits, Wet rooms, Shower installs, Tiling]
+flooring_fitters:
+  label: Flooring fitters
+  family: trades
+  synonyms: [flooring company, carpet fitter, laminate flooring]
+  types: [flooring_contractor, general_contractor]
+  keywords: [floor, carpet, laminate, vinyl]
+  services: [Carpets, Laminate and LVT, Wood flooring, Underfloor prep]
+dog_walkers:
+  label: Dog walkers
+  family: generic
+  synonyms: [dog walking, pet sitter, doggy day care]
+  types: [pet_care]
+  keywords: [walk, dog, paws, pet, k9]
+  services: [Solo walks, Group walks, Puppy visits, Pet sitting]
+photographers:
+  label: Photographers
+  family: professional
+  synonyms: [wedding photographer, photography studio, portrait photographer]
+  types: [photographer]
+  keywords: [photo, photography, studio, images]
+  services: [Weddings, Portraits, Events, Commercial shoots]
+solicitors:
+  label: Solicitors
+  family: professional
+  synonyms: [law firm, conveyancing solicitor, family solicitor]
+  types: [lawyer]
+  keywords: [solicitor, law, legal, conveyanc]
+  services: [Conveyancing, Wills and probate, Family law, Business law]
+estate_agents:
+  label: Estate agents
+  family: professional
+  synonyms: [letting agent, property agent, independent estate agent]
+  types: [real_estate_agency]
+  keywords: [estate, letting, property, homes, lettings]
+  services: [Sales, Lettings, Property management, Free valuations]
+dentists:
+  label: Dentists
+  family: professional
+  synonyms: [dental practice, private dentist, cosmetic dentist]
+  types: [dentist, dental_clinic]
+  keywords: [dental, dentist, smile, teeth]
+  services: [Check-ups, Hygienist, Whitening, Emergency appointments]
+childminders:
+  label: Childminders
+  family: generic
+  synonyms: [nursery, day nursery, childcare]
+  types: [child_care_agency, preschool]
+  keywords: [child, nursery, kids, little, tots, pre-school]
+  services: [Full days, Half days, School pick-ups, Holiday clubs]

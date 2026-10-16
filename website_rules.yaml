@@ -1,0 +1,125 @@
+# Website audit rules. Edit to taste.
+
+# Pages on these domains are not real websites: the lead is treated as having NO website.
+social_domains:
+  - facebook.com
+  - fb.com
+  - fb.me
+  - instagram.com
+  - linktr.ee
+  - x.com
+  - twitter.com
+  - tiktok.com
+  - yell.com
+  - checkatrade.com
+  - bark.com
+  - business.site
+  - g.page
+  - linkedin.com
+  - youtube.com
+  - nextdoor.co.uk
+  - nextdoor.com
+  - trustatrader.com
+  - mybuilder.com
+  - ratedpeople.com
+  - freeindex.co.uk
+  - thomsonlocal.com
+  - wa.me
+  - booksy.com
+  - fresha.com
+  - treatwell.co.uk
+  - just-eat.co.uk
+  - deliveroo.co.uk
+  - ubereats.com
+
+# Free website-builder subdomains (status: free_builder).
+free_builder_domains:
+  - wixsite.com
+  - wix.com
+  - square.site
+  - squarespace.com
+  - weebly.com
+  - wordpress.com
+  - godaddysites.com
+  - webnode.com
+  - webnode.page
+  - webnode.co.uk
+  - jimdo.com
+  - jimdofree.com
+  - jimdosite.com
+  - site123.me
+  - mystrikingly.com
+  - strikingly.com
+  - carrd.co
+  - blogspot.com
+  - weeblysite.com
+  - ueniweb.com
+  - business.google.com
+  - yolasite.com
+  - webs.com
+  - wixstudio.io
+  - ionos.site
+  - simplesite.com
+  - 123website.co.uk
+
+# Thresholds for classifying a real website.
+thresholds:
+  # PageSpeed mobile performance score (0-100) below this is "poor".
+  pagespeed_poor_below: 50
+  # Below this (but above the poor line) counts as a minor "slow on mobile" issue.
+  pagespeed_minor_below: 70
+  # Copyright year older than this many years is a minor issue ("stale").
+  copyright_stale_years: 2
+  # Older than this many years makes the site "poor".
+  copyright_poor_years: 3
+  # This many broken internal links (or more) makes the site "poor".
+  broken_links_poor: 3
+  # Up to this many minor issues is "ok"; more than this is "poor".
+  ok_max_minor_issues: 2
+  # Internal links checked per site.
+  max_links_checked: 10
+  # Homepage fetch timeout (seconds).
+  fetch_timeout: 15
+
+# Text that suggests a parked or for-sale domain.
+parked_phrases:
+  - this domain is for sale
+  - buy this domain
+  - domain may be for sale
+  - this domain has been registered
+  - parked free
+  - parkingcrew
+  - sedoparking
+  - hugedomains
+  - dan.com
+  - domain parking
+  - this web page is parked
+
+# Weaker signals, only counted as "parked" when the page has very little text on it.
+placeholder_phrases:
+  - future home of
+  - coming soon
+  - website coming soon
+  - under construction
+
+# "Website by ..." credits that are just platforms, not agencies.
+platform_names:
+  - wordpress
+  - wix
+  - squarespace
+  - shopify
+  - godaddy
+  - weebly
+  - jimdo
+  - webflow
+  - joomla
+  - drupal
+  - google
+  - yell
+  - ionos
+  - 1&1
+  - elementor
+  - divi
+  - ueni
+  - duda
+  - site123

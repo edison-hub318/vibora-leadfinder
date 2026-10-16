@@ -1,0 +1,29 @@
+# Starter towns for the search box (and for widening a search to nearby places).
+# Coordinates are approximate town centres. Add your own; anything you search is also cached.
+towns:
+  - {name: Crawley, lat: 51.1092, lng: -0.1872}
+  - {name: Horsham, lat: 51.0629, lng: -0.3259}
+  - {name: Horley, lat: 51.1741, lng: -0.1720}
+  - {name: East Grinstead, lat: 51.1236, lng: -0.0074}
+  - {name: Haywards Heath, lat: 50.9984, lng: -0.1060}
+  - {name: Burgess Hill, lat: 50.9580, lng: -0.1316}
+  - {name: Lindfield, lat: 51.0134, lng: -0.0838}
+  - {name: Copthorne, lat: 51.1408, lng: -0.1103}
+  - {name: Crawley Down, lat: 51.1196, lng: -0.0799}
+  - {name: Turners Hill, lat: 51.1036, lng: -0.0910}
+  - {name: Three Bridges, lat: 51.1170, lng: -0.1617}
+  - {name: Pease Pottage, lat: 51.0812, lng: -0.1990}
+  - {name: Handcross, lat: 51.0539, lng: -0.1990}
+  - {name: Cuckfield, lat: 51.0063, lng: -0.1436}
+  - {name: Reigate, lat: 51.2373, lng: -0.2060}
+  - {name: Redhill, lat: 51.2400, lng: -0.1700}
+  - {name: Dorking, lat: 51.2325, lng: -0.3300}
+  - {name: Gatwick, lat: 51.1537, lng: -0.1821}
+  - {name: Felbridge, lat: 51.1416, lng: -0.0365}
+  - {name: Lingfield, lat: 51.1764, lng: -0.0130}
+  - {name: Billingshurst, lat: 51.0230, lng: -0.4520}
+  - {name: Southwater, lat: 51.0230, lng: -0.3540}
+  - {name: Brighton, lat: 50.8225, lng: -0.1372}
+  - {name: RH10, lat: 51.1150, lng: -0.1500}
+  - {name: RH11, lat: 51.1080, lng: -0.2150}
+  - {name: RH6, lat: 51.1700, lng: -0.1650}

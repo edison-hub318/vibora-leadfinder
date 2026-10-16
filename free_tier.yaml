@@ -1,0 +1,28 @@
+# Google Maps Platform free monthly allowances, per SKU.
+# IMPORTANT: confirm these numbers on Google's pricing page before relying on them:
+#   https://developers.google.com/maps/billing-and-pricing/pricing
+# Free allowances reset on the 1st of each month (Pacific time) and do NOT pool between SKUs.
+# With FREE_TIER_MODE=true the tool stops at FREE_TIER_SAFETY (default 90%) of each allowance.
+
+skus:
+  text_search_enterprise:
+    label: Text Search Enterprise
+    # Text Search with phone/website/rating fields bills at this tier.
+    free_per_month: 1000
+    usd_per_1000: 35.0
+  text_search_pro:
+    label: Text Search Pro
+    # Used once per new town to find its coordinates (location + address only).
+    free_per_month: 5000
+    usd_per_1000: 32.0
+  place_details_enterprise:
+    label: Place Details Enterprise
+    # Used by `leadfinder refresh`.
+    free_per_month: 1000
+    usd_per_1000: 20.0
+
+# Rough USD -> GBP rate, only used for cost estimates when FREE_TIER_MODE=false.
+usd_to_gbp: 0.79
+
+# Hard cap on Google requests a single search may make (on top of the monthly limits).
+per_search_request_cap: 15

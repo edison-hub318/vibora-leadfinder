@@ -65,7 +65,7 @@ def backup_age_hours(settings: Settings) -> float | None:
     return (now_utc() - b.taken_at).total_seconds() / 3600.0
 
 
-def make_backup(conn: sqlite3.Connection, settings: Settings, label: str = "") -> BackupFile:
+def make_backup(conn: sqlite3.Connection, settings: Settings, label: str = "", apply_retention: bool = True) -> BackupFile:
     d = settings.backup_dir
     d.mkdir(parents=True, exist_ok=True)
     stamp = now_london().strftime("%Y%m%d-%H%M%S")
@@ -81,7 +81,8 @@ def make_backup(conn: sqlite3.Connection, settings: Settings, label: str = "") -
     finally:
         dest.close()
     db.set_setting(conn, "last_backup_date", today_london().isoformat())
-    prune(settings)
+    if apply_retention:
+        prune(settings)
     return _parse(target) or BackupFile(target, now_utc(), target.stat().st_size, label)
 
 
@@ -130,8 +131,9 @@ def restore(conn: sqlite3.Connection, settings: Settings, backup_name: str, conf
     src_path = settings.backup_dir / Path(backup_name).name  # never allow paths outside the folder
     if not src_path.exists() or not NAME_RE.match(src_path.name):
         raise FileNotFoundError(f"No backup called {backup_name}.")
-    safety = make_backup(conn, settings, label="pre-restore")
-    src = sqlite3.connect(str(src_path))
+    # Pruning is skipped here so the backup being restored can't be removed by its own safety copy.
+    safety = make_backup(conn, settings, label="pre-restore", apply_retention=False)
+    src = sqlite3.connect(src_path.resolve().as_uri() + "?mode=ro", uri=True)
     try:
         if conn.in_transaction:
             conn.commit()
@@ -151,5 +153,5 @@ def backup_info(settings: Settings) -> dict[str, Any]:
         "stale": age is None or age > 48,
         "dir": str(settings.backup_dir),
         "default_dir": settings.backup_dir_is_default,
-        "items": list_backups(settings),
+        "backups": list_backups(settings),
     }

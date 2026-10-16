@@ -1,0 +1,14 @@
+# Follow-up template (sent at most once, 5+ days after the first email with no reply).
+# Same placeholders as cold_email.txt. The footer is added automatically.
+Subject: Re: Quick idea for {name}
+
+Hi again,
+
+Just bumping my note from last week in case it got buried. Happy to send over a couple of examples of sites we've built for other {trade} around {town}.
+
+Here's the mock-up I made for you: {preview_url}
+
+If now's not the right time, no problem at all.
+
+Thanks,
+{my_name}

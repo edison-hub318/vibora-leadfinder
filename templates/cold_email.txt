@@ -1,0 +1,19 @@
+# Cold email template. Lines starting with # are ignored.
+# Placeholders: {name} {trade} {town} {hook} {preview_url} {my_name} {my_phone}
+# A line containing {preview_url} is left out automatically when the lead has no preview.
+# The footer (your name, BUSINESS_ADDRESS and the STOP line) is always added for you.
+# Keep the body under 120 words.
+Subject: Quick idea for {name}
+
+Hi there,
+
+I was looking at {trade} in {town} and came across {name}. One thing stood out: {hook}. People searching on their phones decide in seconds, so that's likely costing you calls.
+
+I run Vibora, a small web design studio nearby. We build fast, simple websites for local businesses that turn Google searches into phone calls.
+
+I mocked up a quick idea of what yours could look like: {preview_url}
+
+Would a 15-minute chat next week be useful? No pressure either way.
+
+Thanks,
+{my_name}

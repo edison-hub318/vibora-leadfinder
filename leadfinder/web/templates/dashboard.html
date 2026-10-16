@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, initials, ring %}
+{% block title_extra %}
+  {% if backup_stale %}<a href="/backups" class="warn-chip">Last backup over 48h ago</a>{% endif %}
+{% endblock %}
+{% block topbar_right %}
+  <span class="seg" role="tablist" aria-label="Person">
+    {% for u in all_users %}<a class="{% if who == u.id|string %}on{% endif %}" href="?period={{ period }}&who={{ u.id }}">{{ u.full_name.split()[0] }}</a>{% endfor %}
+    <a class="{% if who == 'team' %}on{% endif %}" href="?period={{ period }}&who=team">Team</a>
+  </span>
+  <span class="seg" role="tablist" aria-label="Date range">
+    {% for key, label in periods.items() %}<a class="{% if period == key %}on{% endif %}" href="?period={{ key }}&who={{ who }}">{{ label }}</a>{% endfor %}
+  </span>
+{% endblock %}
+{% block content %}
+{% macro delta(v, unit="") -%}
+  {%- if v is not none and v != 0 -%}<span class="delta {{ 'up' if v > 0 else 'down' }}">{{ v|signed(unit) }} vs prev</span>{%- elif v == 0 -%}<span class="dim">no change</span>{%- else -%}<span class="dim">&nbsp;</span>{%- endif -%}
+{%- endmacro %}
+
+<section class="grid g-kpi">
+  <div class="card kpi">
+    <div class="label">Calls today</div>
+    <div class="ring-wrap" style="margin-top:8px">
+      {{ ring(k.calls_today, k.target, 64, 6) }}
+      <div><div class="value" style="margin:0">{{ k.calls_today }}</div><div class="small muted">of {{ k.target }} target</div></div>
+    </div>
+  </div>
+  <div class="card kpi">
+    <div class="label">Connect rate</div>
+    <div class="value">{{ k.connect_rate|pct }}</div>
+    <div class="sub">{{ delta(k.connect_rate_change, " pts") }}<canvas width="96" height="28" data-spark='{{ k.series.connects|tojson }}'></canvas></div>
+  </div>
+  <div class="card kpi">
+    <div class="label">Meetings booked</div>
+    <div class="value">{{ k.meetings }}</div>
+    <div class="sub">{{ delta(k.meetings_change) }}<canvas width="96" height="28" data-spark='{{ k.series.meetings|tojson }}'></canvas></div>
+  </div>
+  <div class="card kpi">
+    <div class="label">Deals closed</div>
+    <div class="value">{{ k.deals }}</div>
+    <div class="sub">{{ delta(k.deals_change) }}<canvas width="96" height="28" data-spark='{{ k.series.deals|tojson }}'></canvas></div>
+  </div>
+  <div class="card kpi">
+    <div class="label">Close rate</div>
+    <div class="value">{{ k.close_rate|pct }}</div>
+    <div class="sub">{{ delta(k.close_rate_change, " pts") }}<span class="dim">won / meetings held</span></div>
+  </div>
+  <div class="card kpi">
+    <div class="label">Dial → meeting</div>
+    <div class="value">{{ k.dial_meeting_rate|pct }}</div>
+    <div class="sub">{{ delta(k.dial_meeting_rate_change, " pts") }}<canvas width="96" height="28" data-spark='{{ k.series.dials|tojson }}'></canvas></div>
+  </div>
+  <div class="card kpi">
+    <div class="label">Revenue won · MRR</div>
+    <div class="value">{{ k.revenue|money }}</div>
+    <div class="sub">{{ delta(k.revenue_change) }}<span><b class="num">{{ k.mrr|money }}</b>/mo</span></div>
+  </div>
+  <div class="card kpi">
+    <div class="label">Pipeline value</div>
+    <div class="value">{{ k.pipeline_value|money }}</div>
+    <div class="sub"><span class="dim">open meetings + proposals × avg deal</span></div>
+  </div>
+</section>
+
+<section class="grid g-3">
+  <div class="card">
+    <div class="card-head"><h3>Today</h3><span class="label">Dials vs target</span></div>
+    <div class="row" style="gap:24px">
+      {% for p in today_strip %}
+      <div class="ring-wrap">{{ ring(p.dials, p.target, 52, 5) }}<div><b>{{ p.name.split()[0] }}</b><div class="small muted num">{{ p.dials }}/{{ p.target }}</div></div></div>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h3>Google free allowance</h3><span class="label">This month</span></div>
+    <div class="stack">
+      {% for m in meter %}
+      <div class="meter {{ m.level if m.level != 'ok' }}">
+        <div class="row between small"><span>{{ m.label }}</span><span class="num">{{ m.used }}/{{ m.free }}</span></div>
+        <div class="bar"><i style="width:{{ [m.pct, 100]|min }}%"></i></div>
+      </div>
+      {% endfor %}
+      <div class="small dim">Resets {{ meter[0].reset_date_text }}{% if not settings.free_tier_mode %} · free-tier mode is OFF{% endif %}</div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h3>Callbacks due today</h3><span class="chip s-callback">{{ callbacks|length }}</span></div>
+    {% if callbacks %}
+    <div class="feed">
+      {% for c in callbacks[:6] %}
+      <div class="item"><div style="min-width:0"><b>{{ c.name }}</b><div class="small muted">{{ c.callback_at|when }}</div></div>
+        <a class="btn btn-primary btn-sm" style="margin-left:auto" href="/dial?lead={{ c.id }}">Call now</a></div>
+      {% endfor %}
+    </div>
+    {% else %}<p class="muted small">No callbacks due. Nice.</p>{% endif %}
+  </div>
+</section>
+
+<section class="grid g-2">
+  <div class="card">
+    <div class="card-head"><h3>Leaderboard</h3><span class="label">{{ periods[period] }}</span></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Person</th><th class="n">Dials</th><th class="n">Connects</th><th class="n">Rate</th><th class="n">Meetings</th><th class="n">Deals</th><th class="n">Revenue</th><th class="n">Talk</th></tr></thead>
+      <tbody>{% for r in leaderboard %}
+        <tr class="{% if r.leader %}leader{% endif %}"><td style="white-space:nowrap">{{ initials(r.initials) }} {{ r.name.split()[0] }}</td>
+        <td class="n">{{ r.dials }}</td><td class="n">{{ r.connects }}</td><td class="n">{{ r.connect_rate|pct }}</td><td class="n">{{ r.meetings }}</td>
+        <td class="n">{{ r.deals }}</td><td class="n">{{ r.revenue|money }}</td><td class="n">{{ r.talk_seconds|duration }}</td></tr>
+      {% endfor %}</tbody>
+    </table></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h3>Funnel</h3><span class="label">{{ periods[period] }}</span></div>
+    {% set top = (funnel|map(attribute='n')|max) or 1 %}
+    <div class="funnel">
+      {% for s in funnel %}
+      <div class="f-row"><span>{{ s.label }}</span>
+        <div class="f-track"><div class="f-bar" style="width:{{ (100 * s.n / top)|round(1) }}%" data-tip="{{ s.label }}: {{ s.n }}"></div></div>
+        <span class="num small" style="text-align:right"><b>{{ s.n }}</b>{% if s.conv is not none %} <span class="dim">{{ s.conv|pct }}</span>{% endif %}</span></div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section class="grid g-2">
+  <div class="card">
+    <div class="card-head"><h3>Best time to call</h3><span class="label">Connect rate · London time</span></div>
+    <div class="heat">
+      <span></span>{% for h in heat.hours %}<span class="hl" style="justify-content:center">{{ h }}</span>{% endfor %}
+      {% for d in heat.grid %}{% set di = loop.index0 %}
+        <span class="hl">{{ heat.days[di] }}</span>
+        {% for c in d %}
+          {% set lv = 0 if not c.dials else (1 + ((c.rate or 0) / 34)|int) %}
+          <span class="cell lv{{ [lv, 4]|min }}" data-tip="{{ heat.days[di] }} {{ heat.hours[loop.index0] }}:00 · {{ c.connects }}/{{ c.dials }} connected{% if c.dials %} ({{ c.rate|pct }}){% endif %}"></span>
+        {% endfor %}
+      {% endfor %}
+    </div>
+    <div class="row between" style="margin-top:10px"><span class="small dim">Darker = higher connect rate. Empty = no calls.</span>
+      <span class="legend-scale">Low <i class="lv1"></i><i class="lv2"></i><i class="lv3"></i><i class="lv4"></i> High</span></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h3>Outcome breakdown</h3><span class="label">{{ periods[period] }}</span></div>
+    <div class="chart-box"><canvas data-bars='{{ {"labels": outcomes|map(attribute="label")|list, "values": outcomes|map(attribute="n")|list,
+      "colors": outcomes|map(attribute="color")|list}|tojson }}'></canvas></div>
+    <details style="margin-top:8px"><summary class="small muted" style="cursor:pointer">Table view</summary>
+      <table><tbody>{% for o in outcomes %}<tr><td>{{ o.label }}</td><td class="n">{{ o.n }}</td></tr>{% endfor %}</tbody></table></details>
+  </div>
+</section>
+
+<section class="grid g-2">
+  {% for title, rows in [("Performance by trade", by_trade), ("Performance by town", by_town)] %}
+  <div class="card">
+    <div class="card-head"><h3>{{ title }}</h3><span class="label">Best converting first</span></div>
+    {% if rows %}<div class="table-wrap"><table>
+      <thead><tr><th></th><th class="n">Dials</th><th class="n">Connects</th><th class="n">Meetings</th><th class="n">Dial→mtg</th><th class="n">Close</th></tr></thead>
+      <tbody>{% for r in rows[:10] %}<tr><td>{{ r.k|trade_label }}</td><td class="n">{{ r.dials }}</td><td class="n">{{ r.connects }}</td><td class="n">{{ r.meetings }}</td><td class="n">{{ r.meeting_rate|pct }}</td><td class="n">{{ r.close_rate|pct }}</td></tr>{% endfor %}</tbody>
+    </table></div>{% else %}<p class="muted small">No calls in this period yet.</p>{% endif %}
+  </div>
+  {% endfor %}
+</section>
+
+<section class="card">
+  <div class="card-head"><h3>Activity</h3><span class="label">Latest</span></div>
+  {% if feed %}<div class="feed">
+    {% for a in feed %}<div class="item">{{ initials(a.initials, a.full_name) }}
+      <div style="min-width:0">{% if a.lead_id %}<a href="/leads?open={{ a.lead_id }}"><b>{{ a.lead_name }}</b></a> · {% endif %}<span class="muted">{{ a.summary }}</span></div>
+      <span class="when">{{ a.created_at|ago }}</span></div>{% endfor %}
+  </div>{% else %}<p class="muted small">No activity yet. Start on the <a href="/dial"><u>Dial</u></a> page.</p>{% endif %}
+</section>
+{% endblock %}

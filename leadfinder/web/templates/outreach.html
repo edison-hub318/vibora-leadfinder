@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block topbar_right %}
+<button class="btn btn-secondary btn-sm" hx-post="/outreach/draft" hx-target="#outreach-body">Draft emails</button>
+<button class="btn btn-primary btn-sm" hx-post="/outreach/send" hx-target="#outreach-body" hx-confirm="Send all approved emails that pass the rules?">Send approved</button>
+{% endblock %}
+{% block content %}<div id="outreach-body">{% include "partials/outreach_body.html" %}</div>{% endblock %}

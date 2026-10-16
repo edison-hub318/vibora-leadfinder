@@ -1,0 +1,34 @@
+{% from "_icons.html" import wchip %}
+{% if job.status == "running" %}
+<div hx-get="/search/job/{{ job_id }}" hx-trigger="every 1s" hx-swap="outerHTML">
+  <div class="banner ok" style="background:var(--card-2);color:var(--text)">
+    <b>Searching {{ job.trade }} in {{ job.town }}…</b>
+    <div class="small muted" style="margin-top:4px">{{ job.stage }}{% if job.total %} ({{ job.done }}/{{ job.total }}){% endif %}</div>
+    {% if job.planned %}<div class="small dim">Planned: about {{ job.planned.text_search }} Text Search request(s), max {{ job.planned.cap }}{% if job.planned.geocode %} + 1 town lookup{% endif %}.</div>{% endif %}
+    {% if job.total %}<div class="meter" style="margin-top:8px"><div class="bar"><i style="width:{{ (100 * job.done / job.total)|round }}%"></i></div></div>{% endif %}
+  </div>
+</div>
+{% elif job.status == "repeat" %}
+<div class="banner">
+  {{ job.error }}
+  <form hx-post="/search" hx-target="#search-result" class="row" style="margin-top:10px">
+    <input type="hidden" name="trade" value="{{ form.trade }}"><input type="hidden" name="town" value="{{ form.town }}">
+    <input type="hidden" name="max_leads" value="{{ job.max_leads or 30 }}"><input type="hidden" name="radius" value="{{ job.radius or 8 }}"><input type="hidden" name="force" value="1">
+    <button class="btn btn-primary btn-sm">Search anyway</button>
+  </form>
+</div>
+{% elif job.status == "error" %}
+<div class="error-box">{{ job.error }}</div>
+{% else %}
+{% set rep = job.report %}
+<div class="stack">
+  {% if job.unknown_trade %}<div class="small amber">"{{ job.trade }}" isn't in trades.yaml, so the category check was skipped. Tick "Save a new trade" next time to add it.</div>{% endif %}
+  <div class="small">{% for label, n in rep.funnel %}<span class="{% if loop.last %}{% else %}muted{% endif %}">{{ label }} <b class="num">{{ n }}</b></span>{% if not loop.last %} <span class="dim">→</span> {% endif %}{% endfor %} = <b>qualified {{ rep.qualified }}</b></div>
+  {% if rep.handled %}<div class="small muted">Already handled: {% for k, v in rep.handled.items() %}{{ k|trade_label }} {{ v }}{% if not loop.last %}, {% endif %}{% endfor %}</div>{% endif %}
+  <div class="small muted">Websites: no website {{ rep.website.get('none', 0) }}, social-only {{ rep.website.get('social_only', 0) }}, free builder {{ rep.website.get('free_builder', 0) }}, poor {{ rep.website.get('poor', 0) }}, decent {{ rep.website.get('ok', 0) + rep.website.get('good', 0) }}</div>
+  <div class="small muted">Google requests {{ rep.requests_made }} · estimated cost £{{ "%.2f"|format(rep.est_cost_gbp) }}</div>
+  <div class="small"><b>{% if rep.stop_reason == 'enough' %}Found the {{ rep.requested }} leads you asked for.{% elif rep.stop_reason == 'exhausted' %}Found {{ rep.qualified }} of {{ rep.requested }}: {{ rep.stop_message }}{% else %}{{ rep.stop_message }}{% endif %}</b></div>
+  {% if rep.top %}<table><tbody>{% for l in rep.top %}<tr class="click" onclick="lfOpenPanel({{ l.id }})"><td><b>{{ l.name }}</b><div class="small muted">{{ l.hook }}</div></td><td>{{ wchip(l.website_status if l.website else 'none') }}</td><td class="n"><b>{{ l.score }}</b></td></tr>{% endfor %}</tbody></table>{% endif %}
+  <div class="row"><a class="btn btn-primary btn-sm" href="/dial">Start dialling</a><a class="btn btn-ghost btn-sm" href="/leads">Refresh list</a></div>
+</div>
+{% endif %}

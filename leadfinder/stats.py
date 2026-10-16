@@ -196,7 +196,8 @@ def outcome_breakdown(conn: sqlite3.Connection, period: str | None, user_ids: li
         f"SELECT outcome, COUNT(*) AS n FROM calls WHERE {w} GROUP BY outcome", a
     ).fetchall()}
     labels = dict(OUTCOMES, dnc="Do not call")
-    return [{"outcome": k, "label": labels[k], "n": rows.get(k, 0)} for k in labels]
+    meaning = {"meeting_booked": "--green", "not_interested": "--red", "callback": "--amber"}
+    return [{"outcome": k, "label": labels[k], "n": rows.get(k, 0), "color": meaning.get(k, "")} for k in labels]
 
 
 def performance(conn: sqlite3.Connection, period: str, user_ids: list[int] | None, by: str = "trade") -> list[dict[str, Any]]:
@@ -247,7 +248,7 @@ def funnel(conn: sqlite3.Connection, period: str, user_ids: list[int] | None) ->
     return out
 
 
-def activity_feed(conn: sqlite3.Connection, user_ids: list[int] | None, limit: int = 20) -> list[dict[str, Any]]:
+def activity_feed(conn: sqlite3.Connection, user_ids: list[int] | None, limit: int = 12) -> list[dict[str, Any]]:
     sql = """SELECT a.*, u.initials, u.full_name, l.name AS lead_name FROM activity a
              LEFT JOIN users u ON u.id=a.user_id LEFT JOIN leads l ON l.id=a.lead_id
              WHERE a.kind IN ('call','stage','email_sent','search','preview_publish','dnc','manual','meeting')"""

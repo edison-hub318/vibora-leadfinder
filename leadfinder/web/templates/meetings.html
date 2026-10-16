@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% from "_icons.html" import initials %}
+{% block topbar_right %}
+<span class="seg">{% for u in all_users %}<a class="{% if who == u.id|string %}on{% endif %}" href="?who={{ u.id }}">{{ u.full_name.split()[0] }}</a>{% endfor %}<a class="{% if who == 'team' %}on{% endif %}" href="?who=team">Team</a></span>
+{% endblock %}
+{% block content %}
+{% macro cal(m) -%}
+<span class="popover"><button type="button" class="btn btn-secondary btn-sm" data-pop>Add to calendar</button>
+<span class="pop hidden stack" style="width:220px"><a class="btn btn-ghost btn-sm" href="/meetings/{{ m.id }}.ics">Download .ics</a>
+<a class="btn btn-ghost btn-sm" href="{{ m.gcal }}" target="_blank" rel="noopener">Google Calendar</a></span></span>
+{%- endmacro %}
+{% if awaiting %}
+<section class="card">
+  <div class="card-head"><h3>Awaiting an outcome</h3><span class="chip s-callback">{{ awaiting|length }}</span></div>
+  <div class="feed">{% for m in awaiting %}
+    <div class="item" style="align-items:center">{{ initials(m.initials, m.full_name) }}
+      <div style="min-width:0"><b>{{ m.name }}</b><div class="small muted">{{ m.start_at|when }} · {{ m.phone|phone }}</div></div>
+      <form method="post" action="/meetings/{{ m.id }}/outcome" class="row" style="margin-left:auto"><input type="hidden" name="csrf_token" value="{{ csrf }}">
+        <span class="small dim">Held →</span>
+        <button class="btn btn-secondary btn-sm" name="outcome" value="proposal">Proposal</button>
+        <button class="btn btn-danger btn-sm" name="outcome" value="lost">Lost</button>
+        <button class="btn btn-ghost btn-sm" name="outcome" value="no_show">No-show</button></form>
+    </div>{% endfor %}</div>
+</section>
+{% endif %}
+<section class="card">
+  <div class="card-head"><h3>Upcoming</h3><span class="label">London time</span></div>
+  {% if days %}
+    {% for day, rows in days.items() %}
+    <div class="label" style="margin:14px 0 4px">{{ day }}</div>
+    <div class="feed">{% for m in rows %}
+      <div class="item" style="align-items:center">{{ initials(m.initials, m.full_name) }}
+        <div style="min-width:0"><b>{{ m.name }}</b><div class="small muted">{{ (m.start_at|when).split(' ')[-1] }} · {{ m.duration_minutes }} min · {{ m.phone|phone }}{% if m.notes %} · {{ m.notes }}{% endif %}</div></div>
+        <span style="margin-left:auto" class="row">{{ cal(m) }}<a class="btn btn-ghost btn-sm" href="/leads?open={{ m.lead_id }}">Open</a></span>
+      </div>{% endfor %}</div>
+    {% endfor %}
+  {% else %}<p class="muted small">No upcoming meetings. Book one from the Dial page.</p>{% endif %}
+</section>
+{% endblock %}

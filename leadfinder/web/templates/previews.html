@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card">
+  <form method="post" id="gen-form" class="row" onsubmit="this.action='/previews/'+this.lead.value+'/generate'">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <select name="lead" style="flex:1;min-width:220px" required>
+      <option value="">Choose a lead…</option>
+      {% for l in leads_for_select %}<option value="{{ l.id }}">{{ l.name }} · {{ l.trade|trade_label }} · {{ l.town }}{% if l.preview_slug %} (has preview){% endif %}</option>{% endfor %}
+    </select>
+    <button class="btn btn-primary">Generate preview</button>
+  </form>
+  <p class="small dim" style="margin-top:10px">Previews use only the business name, trade, town and phone, plus generic copy. No Google reviews or photos. Each page carries "Concept design by Vibora" and a noindex tag.
+  {% if not can_publish %} Set NETLIFY_AUTH_TOKEN in .env to publish previews to a public link.{% endif %}</p>
+</section>
+{% if items %}
+<section class="thumbs">
+  {% for p in items %}
+  <div class="card thumb">
+    <div class="frame">{% if p.exists %}<iframe src="/previews/{{ p.id }}/view" loading="lazy" tabindex="-1" title="{{ p.name }} preview"></iframe>{% else %}<p class="muted small" style="padding:20px">File missing: regenerate it.</p>{% endif %}</div>
+    <div class="meta stack" style="gap:8px">
+      <div><b>{{ p.name }}</b><div class="small muted">{{ p.trade|trade_label }} · {{ p.town }}</div></div>
+      {% if p.preview_url %}<div class="row small"><a href="{{ p.preview_url }}" target="_blank" rel="noopener"><u>{{ p.preview_url }}</u></a><button class="btn btn-ghost btn-sm" onclick="lfCopy('{{ p.preview_url }}')">Copy</button></div>{% endif %}
+      <div class="row">
+        <a class="btn btn-secondary btn-sm" href="/previews/{{ p.id }}/view" target="_blank">Open</a>
+        <form method="post" action="/previews/{{ p.id }}/generate"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn btn-ghost btn-sm">Regenerate</button></form>
+        <a class="btn btn-ghost btn-sm" href="/previews/{{ p.id }}/export">Export folder</a>
+        {% if can_publish %}<button class="btn btn-ghost btn-sm" hx-post="/previews/{{ p.id }}/publish" hx-swap="none">Publish</button>{% endif %}
+        <form method="post" action="/previews/{{ p.id }}/delete" onsubmit="return confirm('Delete this preview?')"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn btn-ghost btn-sm red">Delete</button></form>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</section>
+{% else %}<p class="muted">No previews yet.</p>{% endif %}
+{% endblock %}

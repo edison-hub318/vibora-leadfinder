@@ -1,0 +1,58 @@
+{% from "_icons.html" import initials %}
+<div class="stack" style="gap:20px">
+<section class="grid g-3">
+  <div class="card kpi"><div class="label">Sent today</div><div class="value">{{ sent_today }}<span class="muted" style="font-size:16px"> / {{ limit }}</span></div>
+    <div class="meter {% if sent_today >= limit %}red{% elif sent_today >= limit * 0.7 %}amber{% endif %}"><div class="bar"><i style="width:{{ [100 * sent_today / (limit or 1), 100]|min }}%"></i></div></div></div>
+  <div class="card kpi"><div class="label">Awaiting review</div><div class="value">{{ pending|length }}</div><div class="sub">approved {{ approved|length }}</div></div>
+  <div class="card"><div class="label" style="margin-bottom:8px">The rules (UK PECR)</div>
+    <div class="small muted">Limited companies only (sole traders and partnerships need prior consent). Max {{ limit }} a day, 60-180s apart, one recipient, plain text, opt-out footer and List-Unsubscribe. Never to suppressed addresses; one follow-up at most.</div>
+    {% if not smtp_ok %}<div class="small amber" style="margin-top:8px">SMTP isn't set up in .env yet, so nothing can be sent.</div>{% endif %}</div>
+</section>
+
+<section class="card">
+  <div class="card-head"><h3>Review queue</h3><span class="label">Approve · edit · skip · delete</span></div>
+  {% if pending %}<div class="stack" style="gap:14px">{% for e in pending %}
+    <div class="card" style="background:var(--bg)">
+      <div class="row between"><div><b>{{ e.name }}</b> <span class="small muted">→ {{ e.to_email }} · {{ e.kind }}</span></div><span>{{ initials(e.created_initials) }}</span></div>
+      {% if e.block_reason %}<div class="small amber" style="margin:8px 0">Blocked: {{ e.block_reason }}</div>{% endif %}
+      <form hx-post="/outreach/{{ e.id }}/edit" hx-target="#outreach-body" class="stack" style="margin-top:10px">
+        <input type="text" name="subject" value="{{ e.subject }}">
+        <textarea name="body" rows="12">{{ e.body }}</textarea>
+        <div class="row">
+          <button class="btn btn-primary btn-sm" type="button" hx-post="/outreach/{{ e.id }}/approve" hx-target="#outreach-body">Approve</button>
+          <button class="btn btn-secondary btn-sm" type="submit">Save edit</button>
+          <button class="btn btn-ghost btn-sm" type="button" hx-post="/outreach/{{ e.id }}/skip" hx-target="#outreach-body">Skip</button>
+          <button class="btn btn-danger btn-sm" type="button" hx-post="/outreach/{{ e.id }}/delete" hx-target="#outreach-body" hx-confirm="Delete this draft?">Delete</button>
+          <span class="small dim">{{ e.body.split('\n--\n')[0].split()|length }} words</span>
+        </div>
+      </form>
+    </div>{% endfor %}</div>
+  {% else %}<p class="muted small">Nothing to review. "Draft emails" writes first emails for leads with an address, plus any follow-ups that are due.</p>{% endif %}
+</section>
+
+<section class="card">
+  <div class="card-head"><h3>Approved, waiting to send</h3></div>
+  {% if approved %}<table><tbody>{% for e in approved %}
+    <tr><td><b>{{ e.name }}</b><div class="small muted">{{ e.to_email }} · {{ e.subject }}</div></td>
+    <td>{% if e.block_reason %}<span class="small amber">{{ e.block_reason }}</span>{% else %}<span class="small green">Ready</span>{% endif %}</td>
+    <td class="n">{{ initials(e.approved_initials) }}</td></tr>{% endfor %}</tbody></table>
+  {% else %}<p class="muted small">None.</p>{% endif %}
+</section>
+
+<section class="grid g-2">
+  <div class="card">
+    <div class="card-head"><h3>Sent</h3></div>
+    {% if sent %}<table><tbody>{% for e in sent %}<tr><td><b>{{ e.name }}</b><div class="small muted">{{ e.to_email }} · {{ e.kind }}</div></td><td class="small muted">{{ e.sent_at|when }}</td><td>{{ initials(e.sent_initials) }}</td></tr>{% endfor %}</tbody></table>
+    {% else %}<p class="muted small">No emails sent yet.</p>{% endif %}
+  </div>
+  <div class="card">
+    <div class="card-head"><h3>Suppression list</h3><span class="chip plain">{{ suppressed|length }}</span></div>
+    <form hx-post="/outreach/suppress" hx-target="#outreach-body" class="row"><input type="email" name="email" placeholder="address@example.co.uk" required style="flex:1"><button class="btn btn-secondary btn-sm">Suppress</button></form>
+    <form hx-post="/outreach/paste-optouts" hx-target="#outreach-body" class="stack" style="margin-top:10px">
+      <textarea name="text" rows="3" placeholder="Paste opt-out replies here; every address in them is suppressed"></textarea>
+      <button class="btn btn-ghost btn-sm" style="align-self:flex-start">Suppress pasted addresses</button></form>
+    {% if suppressed %}<table style="margin-top:10px"><tbody>{% for s in suppressed %}<tr><td>{{ s.email }}<div class="small dim">{{ s.reason }}</div></td><td class="small muted">{{ s.created_at|when(False) }}</td>
+      <td><button class="btn btn-ghost btn-sm" hx-post="/outreach/unsuppress" hx-vals='{"email": {{ s.email|tojson }}}' hx-target="#outreach-body" hx-confirm="Remove {{ s.email }} from the suppression list?">Remove</button></td></tr>{% endfor %}</tbody></table>{% endif %}
+  </div>
+</section>
+</div>

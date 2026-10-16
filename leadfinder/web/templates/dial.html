@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block topbar_right %}<a class="btn btn-ghost btn-sm" href="/leads">Browse leads</a>{% endblock %}
+{% block content %}
+<div id="dial-root" class="stack" style="gap:16px">
+  <div class="session-strip">
+    <span class="label">Session</span>
+    <span class="s"><b id="ss-dials">0</b><span class="muted small">dials</span></span>
+    <span class="s"><b id="ss-connects">0</b><span class="muted small">connects</span></span>
+    <span class="s"><b id="ss-meetings">0</b><span class="muted small">meetings</span></span>
+    <span class="s"><b id="ss-time">00:00</b><span class="muted small">on the phones</span></span>
+    <button id="ss-end" class="btn btn-ghost btn-sm hidden" onclick="lfDial.endSession()" style="margin-left:auto">End session</button>
+    <span class="small dim" style="margin-left:auto">Keys: <span class="kbd">C</span> calling · <span class="kbd">1</span>-<span class="kbd">7</span> outcome · <span class="kbd">N</span> next</span>
+  </div>
+  <div class="dial-grid">
+    <div id="dial-card">{% include "partials/dial_card.html" %}</div>
+    <div class="stack" style="gap:16px">
+      <details class="card panel" open>
+        <summary>Call script <span class="small dim">edit in Settings</span></summary>
+        <div class="script">{{ script|script(lead, settings.my_name or user.full_name) }}</div>
+        {% if rebuttals %}
+        <div class="label" style="margin-top:14px">Best rebuttals</div>
+        {% for label, text in rebuttals %}<div style="margin-top:8px"><b class="small">{{ label }}</b><div class="small muted" style="white-space:pre-wrap">{{ text }}</div></div>{% endfor %}
+        {% endif %}
+      </details>
+    </div>
+  </div>
+</div>
+{% endblock %}

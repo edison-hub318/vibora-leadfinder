@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block topbar_right %}<span class="seg">{% for key, l in periods.items() %}<a class="{% if period == key %}on{% endif %}" href="?period={{ key }}">{{ l }}</a>{% endfor %}</span>{% endblock %}
+{% block content %}
+<section class="grid g-2">
+  <div class="card">
+    <div class="card-head"><h3>How often each objection comes up</h3><span class="label">{{ periods[period] }}</span></div>
+    {% if counts %}<div class="chart-box"><canvas data-bars='{{ {"labels": counts|map(attribute="label")|list, "values": counts|map(attribute="n")|list, "horizontal": true}|tojson }}'></canvas></div>
+    {% else %}<p class="muted small">No objections logged in this period. Tag them on the Dial page when you log Not interested, Callback or Gatekeeper.</p>{% endif %}
+  </div>
+  <div class="card">
+    <div class="card-head"><h3>Trend</h3><span class="label">Objections per week</span></div>
+    <div class="chart-box"><canvas data-line='{{ {"labels": weeks|map(attribute="label")|list, "values": weeks|map(attribute="n")|list}|tojson }}'></canvas></div>
+  </div>
+</section>
+<section class="card">
+  <div class="card-head"><h3>By trade</h3><span class="label">Which niches raise what</span></div>
+  {% if by_trade %}<div class="table-wrap"><table>
+    <thead><tr><th>Trade</th>{% for t in tags %}<th class="n">{{ t.label }}</th>{% endfor %}</tr></thead>
+    <tbody>{% for trade, row in by_trade.items() %}<tr><td>{{ trade|trade_label }}</td>{% for t in tags %}<td class="n {% if not row.get(t.key) %}dim{% endif %}">{{ row.get(t.key, 0) }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+  </table></div>{% else %}<p class="muted small">Nothing yet.</p>{% endif %}
+</section>
+<section class="grid g-2">
+  {% for t in tags %}
+  <div class="card">
+    <div class="card-head"><h3>{{ t.label }}</h3><span class="chip plain">{{ (counts|selectattr("tag", "equalto", t.key)|map(attribute="n")|first) or 0 }}</span></div>
+    <form hx-post="/objections/{{ t.key }}/note" hx-swap="none" class="stack">
+      <textarea name="rebuttal" rows="3" placeholder="Your best rebuttal (shows in the Dial page script panel)">{{ notes.get(t.key, '') }}</textarea>
+      <button class="btn btn-secondary btn-sm" style="align-self:flex-start">Save rebuttal</button>
+    </form>
+    {% if latest.get(t.key) %}<div class="feed" style="margin-top:10px">{% for n in latest[t.key] %}
+      <div class="item"><span class="badge-initials">{{ n.initials or '-' }}</span><div style="min-width:0"><a href="/leads?open={{ n.lead_id }}"><b class="small">{{ n.name }}</b></a>
+      {% if n.other_text or n.note %}<div class="small muted">{{ n.other_text or n.note }}</div>{% endif %}</div><span class="when">{{ n.created_at|ago }}</span></div>{% endfor %}</div>{% endif %}
+  </div>
+  {% endfor %}
+</section>
+{% endblock %}

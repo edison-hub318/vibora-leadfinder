@@ -1,0 +1,62 @@
+{% from "_icons.html" import initials, wchip, schip %}
+<div class="stack" style="gap:16px">
+  <div>
+    <div class="label">{{ lead.trade|trade_label }} · {{ lead.town }}</div>
+    <h2 style="font-size:24px;margin-top:6px">{{ lead.name }}</h2>
+    <div class="row" style="margin-top:8px">{{ schip(lead.status) }}{{ wchip(lead.website_status if lead.website else "none") }}<span class="chip plain">Score {{ lead.score }}</span>{% if is_dnc %}<span class="chip s-dnc">Do not call</span>{% endif %}</div>
+  </div>
+  <div class="row">
+    {% if not is_dnc and lead.tps_status != 'registered' %}<a class="btn btn-primary" href="/dial?lead={{ lead.id }}">Open in Dial</a>{% endif %}
+    <a class="btn btn-secondary" href="tel:{{ lead.phone|tel }}">{{ lead.phone|phone or "No phone" }}</a>
+    {% if lead.maps_url %}<a class="btn btn-ghost" href="{{ lead.maps_url }}" target="_blank" rel="noopener">Maps</a>{% endif %}
+  </div>
+  <div class="hook">{{ display_hook(lead) }}</div>
+  <dl class="kv">
+    <dt>Address</dt><dd>{{ lead.address }}</dd>
+    <dt>Phone</dt><dd>{{ lead.phone|phone }} <span class="dim">({{ lead.phone_type|trade_label }})</span></dd>
+    <dt>Rating</dt><dd>{% if lead.rating %}{{ "%.1f"|format(lead.rating) }}★, {% endif %}{{ lead.review_count }} reviews</dd>
+    <dt>Website</dt><dd>{% if lead.website %}<a href="{{ lead.website }}" target="_blank" rel="noopener noreferrer"><u>{{ lead.website }}</u></a>{% else %}None{% endif %}{% if lead.pagespeed_score is not none %} · PageSpeed {{ lead.pagespeed_score }}{% endif %}</dd>
+    {% if lead.website_issues %}<dt>Issues</dt><dd><ul style="margin:0;padding-left:16px">{% for i in lead.website_issues %}<li>{{ i }}</li>{% endfor %}</ul></dd>{% endif %}
+    {% if lead.ai_verdict %}<dt>AI verdict</dt><dd>{{ lead.ai_verdict }} <span class="dim">({{ lead.ai_dated_score }}/10 dated; {{ lead.ai_biggest_problem }})</span></dd>{% endif %}
+    {% if lead.existing_agency %}<dt>Agency</dt><dd class="amber">Footer credits {{ lead.existing_agency }}: may be in a contract or loyal</dd>{% endif %}
+    {% if lead.quality_flags %}<dt>Flags</dt><dd>{% for f in lead.quality_flags %}{{ f|trade_label }}{% if not loop.last %}, {% endif %}{% endfor %}{% if 'possible_ghost' in lead.quality_flags %} (possibly inactive or a ghost listing){% endif %}</dd>{% endif %}
+    <dt>Company</dt><dd>{{ lead.entity_type|trade_label }}{% if lead.company_number %} · Co. no. {{ lead.company_number }}{% endif %}
+      <form class="row" style="margin-top:6px" hx-post="/leads/{{ lead.id }}/type" hx-target="#side-panel-body">
+        <button class="btn btn-ghost btn-sm" name="entity" value="limited_company">Mark limited company</button>
+        <button class="btn btn-ghost btn-sm" name="entity" value="sole_trader">Mark sole trader</button></form></dd>
+    <dt>Email</dt><dd>{% if lead.email %}{{ lead.email }} <span class="dim small">({{ lead.email_source or 'manual' }})</span>{% endif %}
+      {% if email_block %}<div class="small amber">{{ email_block }}</div>{% endif %}
+      <form class="row" style="margin-top:6px" hx-post="/leads/{{ lead.id }}/email" hx-target="#side-panel-body">
+        <input type="email" name="email" placeholder="Add an address you found" style="flex:1;height:30px"><button class="btn btn-secondary btn-sm">Save</button></form></dd>
+    <dt>TPS</dt><dd>{{ lead.tps_status|trade_label }}
+      <span class="row" style="display:inline-flex;margin-left:6px">
+      <button class="btn btn-ghost btn-sm" hx-post="/leads/{{ lead.id }}/tps" hx-vals='{"result":"clear"}' hx-target="#side-panel-body">Clear</button>
+      <button class="btn btn-ghost btn-sm" hx-post="/leads/{{ lead.id }}/tps" hx-vals='{"result":"registered"}' hx-target="#side-panel-body">Registered</button></span></dd>
+    <dt>Owner</dt><dd><form hx-post="/leads/{{ lead.id }}/assign" hx-target="#side-panel-body" hx-trigger="change">
+      <select name="owner_id" style="height:30px"><option value="">Nobody</option>{% for u in all_users %}<option value="{{ u.id }}" {% if lead.owner_id == u.id %}selected{% endif %}>{{ u.full_name }}</option>{% endfor %}</select></form></dd>
+    {% if lead.callback_at %}<dt>Callback</dt><dd class="amber">{{ lead.callback_at|when }}</dd>{% endif %}
+    {% if lead.status == 'won' %}<dt>Deal</dt><dd class="green">{{ lead.setup_fee|money }} setup + {{ lead.retainer|money }}/mo</dd>{% endif %}
+    {% if lead.lost_reason %}<dt>Lost</dt><dd>{{ lead.lost_reason }}</dd>{% endif %}
+    <dt>Preview</dt><dd>{% if lead.preview_slug %}<a href="/previews/{{ lead.id }}/view" target="_blank"><u>Open preview</u></a>{% if lead.preview_url %} · <a href="{{ lead.preview_url }}" target="_blank"><u>{{ lead.preview_url }}</u></a> <button class="btn btn-ghost btn-sm" onclick="lfCopy('{{ lead.preview_url }}')">Copy</button>{% endif %}
+      {% else %}<button class="btn btn-ghost btn-sm" hx-post="/previews/{{ lead.id }}/generate" hx-swap="none">Generate preview</button>{% endif %}</dd>
+    <dt>First seen</dt><dd class="small muted">{{ lead.first_seen|when }} · refreshed {{ lead.last_refreshed|ago }}</dd>
+  </dl>
+  <form class="row" hx-post="/leads/{{ lead.id }}/stage" hx-target="#side-panel-body">
+    <select name="stage" style="width:auto;height:32px">{% for s in ["meeting_booked","proposal_sent","won","lost"] %}<option value="{{ s }}">{{ s|status_label }}</option>{% endfor %}</select>
+    <input type="number" name="setup" placeholder="Setup £" style="width:100px;height:32px">
+    <input type="number" name="retainer" placeholder="£/mo" style="width:90px;height:32px">
+    <input type="text" name="reason" placeholder="Loss reason" style="width:130px;height:32px">
+    <button class="btn btn-secondary btn-sm">Move</button>
+  </form>
+  <div>
+    <div class="label" style="margin-bottom:6px">Call history</div>
+    {% if history %}<div class="feed">{% for h in history %}
+      <div class="item">{{ initials(h.initials, h.full_name) }}<div style="min-width:0"><b class="small">{{ h.outcome|trade_label }}</b>{% if h.objections %} <span class="small dim">({{ h.objections }})</span>{% endif %}{% if h.note %}<div class="small muted">{{ h.note }}</div>{% endif %}</div>
+      <span class="when">{{ h.created_at|when }} · {{ h.duration_seconds|duration }}</span></div>{% endfor %}</div>
+    {% else %}<p class="small muted">No calls yet.</p>{% endif %}
+  </div>
+  {% if timeline %}<div>
+    <div class="label" style="margin-bottom:6px">Activity</div>
+    <div class="feed">{% for a in timeline %}<div class="item">{{ initials(a.initials) }}<span class="small muted">{{ a.summary }}</span><span class="when">{{ a.created_at|ago }}</span></div>{% endfor %}</div>
+  </div>{% endif %}
+</div>

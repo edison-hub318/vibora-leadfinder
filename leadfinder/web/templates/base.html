@@ -1,0 +1,64 @@
+{% from "_icons.html" import icon, initials %}<!doctype html>
+<html lang="en-GB" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="csrf-token" content="{{ csrf }}">
+<meta name="robots" content="noindex, nofollow">
+<title>{{ title or "Lead terminal" }} · vibora</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<script>try{var t=localStorage.getItem("lf-theme");if(t==="light")document.documentElement.setAttribute("data-theme","light");if(localStorage.getItem("lf-collapsed")==="1")document.documentElement.classList.add("collapsed")}catch(e){}</script>
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/vendor/htmx.min.js" defer></script>
+<script src="/static/vendor/chart.umd.js" defer></script>
+<script src="/static/app.js" defer></script>
+</head>
+<body hx-headers='{"X-CSRF-Token": "{{ csrf }}"}'>
+{% block body %}
+<div class="app">
+  <aside class="sidebar">
+    <div class="brandrow">
+      <span class="wordmark">vibora</span>
+      <button class="icon-btn" onclick="lfCollapse()" title="Collapse sidebar">{{ icon("sidebar", 17) }}</button>
+    </div>
+    <div class="navs">
+    {% for group, items in NAV %}
+      <div class="nav-group nav">
+        <span class="label">{{ group }}</span>
+        {% for key, label, href, ic in items %}
+        <a href="{{ href }}" class="{% if active == key %}active{% endif %}" title="{{ label }}">{{ icon(ic) }}<span>{{ label }}</span></a>
+        {% endfor %}
+      </div>
+    {% endfor %}
+    </div>
+    <div class="recent" id="recent">
+      {% include "partials/recent.html" %}
+    </div>
+    <div class="account">
+      <div id="account-menu" class="menu hidden">
+        <a href="/grafting">My grafting</a>
+        <a href="/settings#password">Change password</a>
+        <button type="button" onclick="lfToggleTheme()">Theme: dark / light</button>
+        <form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button type="submit">Log out</button></form>
+      </div>
+      <button class="account-btn" data-menu-toggle type="button">
+        <span class="avatar">{{ user.initials }}</span>
+        <span class="account-name" style="flex:1;min-width:0"><b style="font-weight:600">{{ user.full_name }}</b></span>
+        <span class="chev muted">{{ icon("chevron", 16) }}</span>
+      </button>
+    </div>
+  </aside>
+  <main class="main">
+    <header class="topbar">
+      <div class="row"><h1>{{ title }}</h1>{% block title_extra %}{% endblock %}</div>
+      <div class="row">{% block topbar_right %}{% endblock %}</div>
+    </header>
+    <div class="content">
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+</div>
+{% endblock %}
+<div id="toasts" aria-live="polite"></div>
+</body>
+</html>

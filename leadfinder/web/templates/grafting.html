@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block topbar_right %}<span class="seg">{% for u in all_users %}<a class="{% if target.id == u.id %}on{% endif %}" href="/grafting?user={{ u.id }}">{{ u.full_name.split()[0] }}</a>{% endfor %}</span>{% endblock %}
+{% block content %}
+<section class="grid g-kpi">
+  <div class="card kpi"><div class="label">Current streak</div><div class="value">{{ g.current_streak }} <span class="muted" style="font-size:15px">days</span></div></div>
+  <div class="card kpi"><div class="label">Longest streak</div><div class="value">{{ g.longest_streak }} <span class="muted" style="font-size:15px">days</span></div></div>
+  <div class="card kpi"><div class="label">On the phones</div><div class="value">{{ "%.1f"|format(g.hours_today) }}h</div><div class="sub">today · {{ "%.1f"|format(g.hours_week) }}h this week</div></div>
+  <div class="card kpi"><div class="label">Activity (12 months)</div><div class="value">{{ g.total }}</div><div class="sub">dials + manual entries</div></div>
+</section>
+<section class="card">
+  <div class="card-head"><h3>Contributions</h3><span class="legend-scale">Less <i class="lv0"></i><i class="lv1"></i><i class="lv2"></i><i class="lv3"></i><i class="lv4"></i> More</span></div>
+  <div class="contrib">{% for wk in g.grid %}<div class="wk">{% for d in wk %}<span class="d lv{{ d.level }}{% if d.future %} future{% endif %}" data-tip="{{ d.date }}: {{ d.n }}"></span>{% endfor %}</div>{% endfor %}</div>
+</section>
+<section class="grid g-3">
+  <div class="card"><div class="label">Most dials in a day</div><div class="kpi"><div class="value">{{ g.record_day.n if g.record_day else 0 }}</div></div><div class="small muted">{{ g.record_day.date if g.record_day else '-' }}</div></div>
+  <div class="card"><div class="label">Most meetings in a week</div><div class="kpi"><div class="value">{{ g.record_week.n if g.record_week else 0 }}</div></div><div class="small muted">{{ g.record_week.week if g.record_week else '-' }}</div></div>
+  <div class="card"><div class="label">Best session connect rate (20+ dials)</div><div class="kpi"><div class="value">{{ ("%.0f%%"|format(g.record_session.rate)) if g.record_session else '-' }}</div></div><div class="small muted">{{ g.record_session.started_at|when if g.record_session else '' }}</div></div>
+</section>
+<section class="grid g-2">
+  <div class="card">
+    <div class="card-head"><h3>Dial sessions</h3></div>
+    {% if g.sessions %}<table><thead><tr><th>Started</th><th class="n">Length</th><th class="n">Dials</th><th class="n">Connects</th><th class="n">Meetings</th></tr></thead><tbody>
+    {% for s in g.sessions %}<tr><td class="small">{{ s.started_at|when }}</td><td class="n">{{ s.seconds|hours if s.ended_at else 'open' }}</td><td class="n">{{ s.dials }}</td><td class="n">{{ s.connects }}</td><td class="n">{{ s.meetings }}</td></tr>{% endfor %}
+    </tbody></table>{% else %}<p class="muted small">Sessions are saved from the Dial page's session timer.</p>{% endif %}
+  </div>
+  <div class="card">
+    <div class="card-head"><h3>Log work outside the tool</h3></div>
+    {% if target.id == user.id %}
+    <form method="post" action="/grafting/entry" class="form-grid"><input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <label class="f">Type<select name="entry_type">{% for t in types %}<option>{{ t }}</option>{% endfor %}</select></label>
+      <label class="f">Count<input type="number" name="count" value="1" min="1"></label>
+      <label class="f">Minutes<input type="number" name="minutes" value="30" min="0"></label>
+      <label class="f">Date<input type="date" name="entry_date" value="{{ today }}"></label>
+      <label class="f" style="grid-column:1/-1">Note<input type="text" name="note" placeholder="e.g. Three Bridges high street"></label>
+      <button class="btn btn-primary btn-sm">Add entry</button>
+    </form>{% endif %}
+    {% if g.manual %}<table style="margin-top:12px"><tbody>{% for m in g.manual %}<tr><td>{{ m.entry_type }}<div class="small dim">{{ m.note or '' }}</div></td><td class="n">×{{ m.count }}</td><td class="n small muted">{{ m.minutes }} min</td><td class="small muted">{{ m.entry_date }}</td></tr>{% endfor %}</tbody></table>{% endif %}
+  </div>
+</section>
+{% endblock %}

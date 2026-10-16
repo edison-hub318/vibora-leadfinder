@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en-GB" data-theme="dark">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Log in · vibora</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<script>try{if(localStorage.getItem("lf-theme")==="light")document.documentElement.setAttribute("data-theme","light")}catch(e){}</script>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<div class="login-wrap">
+  <form class="login-card" method="post" action="/login">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <div class="label">Lead terminal</div>
+    <div class="wordmark">vibora</div>
+    {% if error %}<div class="error-box">{{ error }}</div>{% endif %}
+    {% if no_users %}<div class="banner">No accounts yet. In a terminal, run <b>leadfinder user add "Your Name"</b> for each person.</div>{% endif %}
+    <label class="f">Full name<input type="text" name="full_name" value="{{ full_name or '' }}" autocomplete="username" required autofocus></label>
+    <label class="f">Password<input type="password" name="password" autocomplete="current-password" required></label>
+    <label class="check"><input type="checkbox" name="remember" value="1"> Keep me logged in for 30 days</label>
+    <button class="btn btn-primary btn-lg" type="submit">Log in</button>
+  </form>
+</div>
+</body>
+</html>

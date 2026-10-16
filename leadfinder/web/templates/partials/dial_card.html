@@ -1,0 +1,97 @@
+{% from "_icons.html" import icon, initials, wchip, schip %}
+{% if not lead %}
+<div class="card dial-card" style="text-align:center;padding:48px 24px">
+  <h2 style="font-size:22px">Nothing to call right now</h2>
+  <p class="muted">Run a new search on the Leads page, or check back when callbacks are due.</p>
+  <a class="btn btn-primary" href="/leads">New search</a>
+</div>
+{% else %}
+<div class="card dial-card" data-lead="{{ lead.id }}">
+  {% if lock_warning %}<div class="banner" style="margin-bottom:14px">{{ lock_warning }}</div>{% endif %}
+  {% if blocked %}<div class="banner red" style="margin-bottom:14px">{{ blocked }}</div>{% endif %}
+  {% if tps_warning %}
+  <div class="banner" style="margin-bottom:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <span style="flex:1">{{ tps_warning }}</span>
+    <button class="btn btn-secondary btn-sm" hx-post="/leads/{{ lead.id }}/tps" hx-vals='{"result":"clear","back":"dial"}' hx-target="#dial-card">Checked: clear</button>
+    <button class="btn btn-danger btn-sm" hx-post="/leads/{{ lead.id }}/tps" hx-vals='{"result":"registered","back":"dial"}' hx-target="#dial-card">On TPS</button>
+  </div>{% endif %}
+  {% if lead.status == "callback" %}<div class="warn-chip" style="margin-bottom:10px">Callback due {{ lead.callback_at|when }}</div>{% endif %}
+  <div class="row between" style="align-items:flex-start">
+    <div style="min-width:0">
+      <div class="label">{{ lead.trade|trade_label }} · {{ lead.town }}</div>
+      <div class="biz" style="margin-top:6px">{{ lead.name }}</div>
+    </div>
+    <div class="row">{{ schip(lead.status) }}{% if lead.owner_initials %}{{ initials(lead.owner_initials, "Owner: " ~ lead.owner_name) }}{% endif %}</div>
+  </div>
+  <a class="tel" href="tel:{{ lead.phone|tel }}" onclick="lfDial.startCall()">{{ lead.phone|phone }}</a>
+  <div class="row small muted">
+    <span>{{ lead.phone_type|trade_label }}</span>
+    {% if lead.rating %}<span>· {{ "%.1f"|format(lead.rating) }}★ ({{ lead.review_count }} reviews)</span>{% else %}<span>· {{ lead.review_count }} reviews</span>{% endif %}
+    <span>· TPS: {{ lead.tps_status }}</span>
+    {% if lead.maps_url %}<a href="{{ lead.maps_url }}" target="_blank" rel="noopener"><u>Maps</u></a>{% endif %}
+    <span>· Score {{ lead.score }}</span>
+  </div>
+  <div class="hook">{{ display_hook(lead) }}{% if lead.ai_verdict and lead.hook %}<div class="small muted" style="margin-top:6px">{{ lead.hook }}</div>{% endif %}</div>
+  <div class="row">
+    {{ wchip(lead.website_status if lead.website else "none", lead.website_issues, lead.website) }}
+    {% if lead.pagespeed_score is not none %}<span class="chip plain">PageSpeed {{ lead.pagespeed_score }}</span>{% endif %}
+    {% if lead.existing_agency %}<span class="chip plain amber" title="May be in a contract or loyal">Site by {{ lead.existing_agency }}</span>{% endif %}
+    {% for f in lead.quality_flags %}<span class="chip plain">{{ f|trade_label }}</span>{% endfor %}
+  </div>
+  {% if lead.preview_url %}
+  <div class="row" style="margin-top:12px"><span class="small muted">Preview:</span><a href="{{ lead.preview_url }}" target="_blank" rel="noopener"><u>{{ lead.preview_url }}</u></a>
+    <button class="btn btn-secondary btn-sm" onclick="lfCopy('{{ lead.preview_url }}')">Copy link</button></div>
+  {% endif %}
+
+  <div class="row" style="margin-top:18px">
+    <button id="calling-btn" class="btn btn-primary" onclick="lfDial.startCall()">Calling…</button>
+    <span id="call-timer" class="timer">00:00</span>
+    <span style="flex:1"></span>
+    {% if lead.preview_slug %}<a class="btn btn-ghost btn-sm" href="/previews/{{ lead.id }}/view" target="_blank">Open preview</a>{% else %}
+    <button class="btn btn-ghost btn-sm" hx-post="/previews/{{ lead.id }}/generate" hx-swap="none">Generate preview</button>{% endif %}
+    <button id="next-btn" class="btn btn-secondary btn-sm" hx-get="/dial/next?skip={{ lead.id }}" hx-target="#dial-card">Skip · N</button>
+  </div>
+
+  <form id="outcome-form" hx-post="/dial/log" hx-target="#dial-card" data-obj-outcomes="{{ objection_outcomes|join(',') }}" style="margin-top:6px">
+    <input type="hidden" name="lead_id" value="{{ lead.id }}">
+    <input type="hidden" name="outcome" value="">
+    <div class="outcomes">
+      {% for key, label in outcomes %}
+      <button type="button" class="btn btn-secondary" data-outcome="{{ key }}" data-label="{{ label }}" data-key="{{ loop.index }}" onclick="lfDial.choose('{{ key }}')">{{ label }} <kbd>{{ loop.index }}</kbd></button>
+      {% endfor %}
+      <button type="button" class="btn btn-danger" onclick="document.getElementById('dnc-dialog').showModal()">Do not call</button>
+    </div>
+    <div id="objections-box" class="hidden stack" style="margin-bottom:12px">
+      <span class="label">Objections (optional, pick any)</span>
+      <div class="tagset">{% for t in objection_tags %}<label><input type="checkbox" name="objections" value="{{ t.key }}"><span>{{ t.label }}</span></label>{% endfor %}</div>
+      <input type="text" name="objection_other" placeholder="Other: what did they say?">
+    </div>
+    <div class="form-grid" style="margin-bottom:12px">
+      <label id="callback-box" class="f hidden">Callback<input type="datetime-local" name="callback_at"></label>
+      <label id="meeting-box" class="f hidden">Meeting<input type="datetime-local" name="meeting_at"></label>
+    </div>
+    <textarea name="note" rows="2" placeholder="Notes"></textarea>
+    <div class="row" style="margin-top:10px"><button id="save-outcome" class="btn btn-primary" type="submit" disabled>Choose an outcome</button></div>
+  </form>
+
+  <dialog id="dnc-dialog">
+    <form hx-post="/dial/dnc" hx-target="#dial-card" class="stack" onsubmit="this.closest('dialog').close()">
+      <input type="hidden" name="lead_id" value="{{ lead.id }}">
+      <h3>Do not call {{ lead.name }}?</h3>
+      <p class="small muted">The number goes on the permanent Do Not Call list and the lead is closed.</p>
+      <input type="text" name="reason" placeholder="Reason (optional)" value="Asked not to be called">
+      <label class="check"><input type="checkbox" name="do_not_email" value="1" {% if lead.email %}checked{% endif %}> Do not email either{% if lead.email %} ({{ lead.email }}){% endif %}</label>
+      <div class="row"><button class="btn btn-danger" type="submit">Add to Do Not Call</button><button class="btn btn-ghost" type="button" onclick="this.closest('dialog').close()">Cancel</button></div>
+    </form>
+  </dialog>
+
+  {% if history %}
+  <div style="margin-top:20px">
+    <div class="label" style="margin-bottom:6px">History</div>
+    <div class="feed">{% for h in history[:8] %}
+      <div class="item">{{ initials(h.initials, h.full_name) }}<div style="min-width:0"><b class="small">{{ h.outcome|trade_label }}</b>{% if h.objections %} <span class="small dim">({{ h.objections }})</span>{% endif %}
+        {% if h.note %}<div class="small muted">{{ h.note }}</div>{% endif %}</div><span class="when">{{ h.created_at|when }} · {{ h.duration_seconds|duration }}</span></div>
+    {% endfor %}</div>
+  </div>{% endif %}
+</div>
+{% endif %}

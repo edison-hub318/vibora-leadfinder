@@ -282,8 +282,8 @@ def commit(conn: sqlite3.Connection) -> None:
         conn.commit()
 
 
-def connect(path: Path | str) -> sqlite3.Connection:
-    """Open the database (creating the schema if needed)."""
+def connect(path: Path | str, init: bool = True) -> sqlite3.Connection:
+    """Open the database (creating the schema if needed, unless init=False)."""
     if str(path) != ":memory:":
         Path(path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(path), timeout=30, check_same_thread=False, factory=LFConnection)
@@ -292,7 +292,8 @@ def connect(path: Path | str) -> sqlite3.Connection:
     if str(path) != ":memory:":
         # WAL lets the dashboard and the CLI use the file at the same time.
         conn.execute("PRAGMA journal_mode = WAL")
-    conn.executescript(SCHEMA)
+    if init:
+        conn.executescript(SCHEMA)
     return conn
 
 

@@ -1,0 +1,13 @@
+<div class="recent-head">
+  <span class="label" style="font-size:10px">Recent</span>
+  <span class="seg">
+    <button hx-get="/partials/recent?scope=me" hx-target="#recent" class="{% if recent_scope != 'team' %}on{% endif %}">Mine</button>
+    <button hx-get="/partials/recent?scope=team" hx-target="#recent" class="{% if recent_scope == 'team' %}on{% endif %}">Team</button>
+  </span>
+</div>
+{% set any_items = (recent.Today or recent.Yesterday or recent.Earlier) if recent else false %}
+{% if not any_items %}<p class="small dim" style="padding:4px 12px">Nothing yet. Calls and changes show here.</p>{% endif %}
+{% for group in ["Today", "Yesterday", "Earlier"] %}{% if recent and recent[group] %}
+<h4>{{ group }}</h4>
+{% for r in recent[group] %}<a href="/leads?open={{ r.lead_id }}" title="{{ r.summary }}">{{ r.lead_name }} <span class="tag">· {{ r.tag or r.kind|trade_label }}</span>{% if recent_scope == 'team' %} <span class="tag">{{ r.initials }}</span>{% endif %}</a>{% endfor %}
+{% endif %}{% endfor %}

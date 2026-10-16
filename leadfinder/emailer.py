@@ -330,7 +330,7 @@ def block_reason_for(conn: sqlite3.Connection, e: dict[str, Any]) -> str | None:
     et = lead["entity_type"]
     if et != "limited_company":
         if et in ("sole_trader", "likely_sole_trader"):
-            return "Sole trader: email not allowed without consent, call instead"
+            return "Sole trader: email not allowed, call instead"
         return "Company type unknown: confirm it's a limited company first (classify or set-type)"
     if is_suppressed(conn, e["to_email"]) or is_suppressed(conn, lead["email"]):
         return "Address is on the suppression list"

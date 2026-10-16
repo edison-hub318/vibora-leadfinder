@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% from "_icons.html" import initials %}
+{% block topbar_right %}<span class="small muted">Average deal {{ avg_deal|money }} · drag cards between columns</span>{% endblock %}
+{% block content %}
+<div class="kanban">
+  {% for c in cols %}
+  <div class="col" data-stage="{{ c.stage }}">
+    <h3><span>{{ c.label }}</span><span class="count dim">{{ c.rows|length }}</span></h3>
+    <div class="cards">
+      {% for l in c.rows %}
+      <div class="kcard" draggable="true" data-id="{{ l.id }}">
+        <div class="row between"><b>{{ l.name }}</b>{% if l.owner_initials %}{{ initials(l.owner_initials) }}{% endif %}</div>
+        <div class="small muted">{{ l.trade|trade_label }} · {{ l.town }}</div>
+        {% if c.stage == 'won' %}<div class="small green" style="margin-top:4px">{{ l.setup_fee|money }} + {{ l.retainer|money }}/mo</div>{% endif %}
+        {% if c.stage == 'lost' and l.lost_reason %}<div class="small red" style="margin-top:4px">{{ l.lost_reason }}</div>{% endif %}
+        <div class="row between" style="margin-top:8px"><span class="small dim">{{ l.stage_changed_at|ago }}</span>
+          <span class="row" style="gap:4px">
+            <select class="small" aria-label="Move to" style="height:26px;width:auto;padding:0 6px" onchange="if(this.value){lfMoveStage({{ l.id }}, this.value, this.closest('.kcard'), document.querySelector('.col[data-stage='+this.value+']'));this.value=''}">
+              <option value="">Move…</option>{% for s in ["meeting_booked","proposal_sent","won","lost"] if s != c.stage %}<option value="{{ s }}">{{ s|status_label }}</option>{% endfor %}</select>
+            <a class="btn btn-ghost btn-sm" href="/leads?open={{ l.id }}">Open</a></span></div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+<dialog id="stage-dialog">
+  <form method="dialog" class="stack">
+    <h3 id="stage-title">Deal won</h3>
+    <div id="stage-won" class="form-grid">
+      <label class="f">Setup fee (£)<input id="stage-setup" type="number" min="0" step="10" value="800"></label>
+      <label class="f">Monthly retainer (£)<input id="stage-retainer" type="number" min="0" step="5" value="150"></label>
+    </div>
+    <label id="stage-lost" class="f hidden">Why was it lost?<input id="stage-reason" type="text" placeholder="e.g. went with a cheaper quote"></label>
+    <div class="row"><button class="btn btn-primary" value="ok">Save</button><button class="btn btn-ghost" value="cancel">Cancel</button></div>
+  </form>
+</dialog>
+{% endblock %}

@@ -39,3 +39,4 @@ leadfinder = ["web/templates/*.html", "web/templates/partials/*.html"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+filterwarnings = ["ignore::DeprecationWarning:fastapi.testclient", "ignore:Using `httpx`"]

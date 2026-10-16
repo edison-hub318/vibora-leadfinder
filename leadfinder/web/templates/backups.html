@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+{% if message %}<div class="banner ok">{{ message }}</div>{% endif %}
+{% if info.default_dir %}<div class="banner">BACKUP_DIR isn't set in .env, so backups are saved in <b>{{ info.dir }}</b> on this PC only. Point it at a OneDrive or Google Drive folder so a dead laptop doesn't take your leads with it.</div>{% endif %}
+<section class="grid g-2">
+  <div class="card">
+    <div class="label">Last backup</div>
+    <div class="kpi"><div class="value {% if info.stale %}red{% endif %}" style="font-size:24px">{{ info.last.taken_at|when if info.last else "Never" }}</div></div>
+    <div class="small muted">{% if info.last %}{{ info.last.taken_at|ago }}{% endif %} · automatic once a day · keeps 30 daily + 12 monthly</div>
+    <form method="post" action="/backups/now" style="margin-top:14px"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn btn-primary">Back up now</button></form>
+  </div>
+  <div class="card">
+    <div class="label" style="margin-bottom:8px">Restore</div>
+    <form method="post" action="/backups/restore" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <select name="name" required><option value="">Choose a backup…</option>{% for b in info.backups %}<option value="{{ b.name }}">{{ b.name }}</option>{% endfor %}</select>
+      <label class="f">Type RESTORE to confirm<input type="text" name="confirm" autocomplete="off" pattern="RESTORE" required></label>
+      <p class="small dim" style="margin:0">A safety backup of the current database is taken first.</p>
+      <button class="btn btn-danger" style="align-self:flex-start">Restore</button>
+    </form>
+  </div>
+</section>
+<section class="card">
+  <div class="card-head"><h3>Backups</h3><span class="small muted">{{ info.dir }}</span></div>
+  {% if info.backups %}<table><thead><tr><th>File</th><th>Taken</th><th class="n">Size</th></tr></thead><tbody>
+  {% for b in info.backups %}<tr><td>{{ b.name }}</td><td class="small muted">{{ b.taken_at|when }}</td><td class="n">{{ "%.0f"|format(b.size / 1024) }} KB</td></tr>{% endfor %}
+  </tbody></table>{% else %}<p class="muted small">No backups yet.</p>{% endif %}
+</section>
+{% endblock %}

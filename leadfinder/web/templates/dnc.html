@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card">
+  <div class="card-head"><h3>Add a number</h3><span class="label">People who asked you not to call</span></div>
+  {% if error %}<div class="error-box" style="margin-bottom:10px">{{ error }}</div>{% endif %}
+  <form method="post" action="/dnc/add" class="form-grid">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <label class="f">Phone number<input type="tel" name="phone" required placeholder="01293 123456 or +44..."></label>
+    <label class="f">Reason<input type="text" name="reason" placeholder="Asked not to be called"></label>
+    <label class="check"><input type="checkbox" name="do_not_email" value="1"> Do not email either</label>
+    <button class="btn btn-primary">Add to Do Not Call</button>
+  </form>
+  <p class="small dim" style="margin-top:10px">Numbers are stored in international format so every way of writing them matches. This list is separate from your TPS checks, and DNC numbers never appear in the Dial queue or in exports for calling.</p>
+</section>
+<section class="card">
+  <div class="card-head"><h3>Do Not Call list</h3><span class="chip plain">{{ rows|length }}</span></div>
+  {% if rows %}<div class="table-wrap"><table>
+    <thead><tr><th>Number</th><th>Business</th><th>Reason</th><th>Added</th><th>By</th><th></th></tr></thead>
+    <tbody>{% for r in rows %}<tr><td class="num">{{ r.phone_e164|phone }}</td><td>{{ r.lead_name or '' }}</td><td class="muted">{{ r.reason or '' }}</td><td class="small muted">{{ r.created_at|when(False) }}</td>
+      <td><span class="badge-initials">{{ r.initials or '-' }}</span></td>
+      <td><form method="post" action="/dnc/remove" onsubmit="return confirm('Remove {{ r.phone_e164 }} from Do Not Call? They asked not to be called.')">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="phone" value="{{ r.phone_e164 }}"><input type="hidden" name="confirm" value="yes">
+        <button class="btn btn-ghost btn-sm">Remove</button></form></td></tr>{% endfor %}</tbody>
+  </table></div>{% else %}<p class="muted small">Empty.</p>{% endif %}
+</section>
+{% endblock %}

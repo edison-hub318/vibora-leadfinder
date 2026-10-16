@@ -1,0 +1,20 @@
+{% from "_icons.html" import initials, wchip, schip %}
+{% if rows %}
+<div class="table-wrap"><table>
+  <thead><tr><th class="n">ID</th><th>Name</th><th>Trade</th><th>Town</th><th>Phone</th><th>Website</th><th class="n">Rating</th><th class="n">Score</th><th>Status</th><th>Owner</th><th>Callback</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr class="click" onclick="if(!event.target.closest('.popover'))lfOpenPanel({{ r.id }})">
+      <td class="n dim">{{ r.id }}</td><td><b>{{ r.name }}</b></td><td>{{ r.trade|trade_label }}</td><td>{{ r.town }}</td>
+      <td class="num">{{ r.phone|phone }}</td>
+      <td>{{ wchip(r.website_status if r.website else "none", r.website_issues, r.website) }}</td>
+      <td class="n">{% if r.rating %}{{ "%.1f"|format(r.rating) }} <span class="dim">({{ r.review_count }})</span>{% else %}<span class="dim">-</span>{% endif %}</td>
+      <td class="n"><b>{{ r.score }}</b></td><td>{{ schip(r.status) }}</td>
+      <td>{% if r.owner_initials %}{{ initials(r.owner_initials, r.owner_name) }}{% endif %}</td>
+      <td class="small {% if r.status == 'callback' %}amber{% endif %}">{{ r.callback_at|when if r.callback_at }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+<p class="small dim" style="padding:6px 10px">{{ rows|length }} lead{{ '' if rows|length == 1 else 's' }}{% if rows|length >= 300 %} (first 300; narrow the filters){% endif %}</p>
+{% else %}<p class="muted" style="padding:18px">No leads match. Try other filters, or run a new search below.</p>{% endif %}

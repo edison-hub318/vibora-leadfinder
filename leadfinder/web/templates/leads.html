@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block topbar_right %}<button class="btn btn-primary btn-sm" onclick="document.getElementById('search-card').scrollIntoView({behavior:'smooth'})">New search</button>{% endblock %}
+{% block content %}
+<section class="card">
+  <form id="filters" class="form-grid" hx-get="/leads/table" hx-target="#leads-table" hx-trigger="input changed delay:250ms from:input[type=search], change" hx-push-url="false">
+    <label class="f">Search<input type="search" name="q" value="{{ f.q or '' }}" placeholder="Name, phone or address"></label>
+    <label class="f">Town<select name="town"><option value="">All towns</option>{% for t in towns %}<option {% if f.town == t %}selected{% endif %}>{{ t }}</option>{% endfor %}</select></label>
+    <label class="f">Trade<select name="trade"><option value="">All trades</option>{% for t in trades %}<option value="{{ t }}" {% if f.trade == t %}selected{% endif %}>{{ t|trade_label }}</option>{% endfor %}</select></label>
+    <label class="f">Status<select name="status"><option value="">Any status</option>{% for k, v in statuses.items() if k != 'duplicate' %}<option value="{{ k }}" {% if f.status == k %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></label>
+    <label class="f">Website<select name="website"><option value="">Any website</option>{% for k, v in website_statuses.items() if k %}<option value="{{ k }}" {% if f.website == k %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></label>
+    <label class="f">Owner<select name="owner"><option value="">Anyone</option>{% for u in all_users %}<option value="{{ u.id }}" {% if f.owner == u.id|string %}selected{% endif %}>{{ u.full_name }}</option>{% endfor %}</select></label>
+    <label class="f">Sort<select name="sort">{% for k, v in [("score","Score"),("name","Name"),("trade","Trade"),("town","Town"),("status","Status"),("website","Website"),("reviews","Reviews"),("recent","Newest")] %}<option value="{{ k }}" {% if f.sort == k %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></label>
+  </form>
+</section>
+<section class="card" style="padding:8px 10px">
+  <div id="leads-table">{% include "partials/leads_table.html" %}</div>
+</section>
+
+<section class="grid g-2" id="search-card">
+  <div class="card">
+    <div class="card-head"><h3>New search</h3><span class="label">Google Places</span></div>
+    <form hx-post="/search" hx-target="#search-result" class="stack">
+      <div class="form-grid">
+        <label class="f">Trade<input type="text" name="trade" list="trade-list" required placeholder="e.g. plumbers" autocomplete="off"></label>
+        <label class="f">Town or postcode<input type="text" name="town" list="town-list" required placeholder="e.g. Crawley or RH10" autocomplete="off"></label>
+        <label class="f">New leads wanted<input type="number" name="max_leads" value="30" min="1" max="200"></label>
+        <label class="f">Radius (km)<input type="number" name="radius" value="8" min="1" max="50" step="0.5"></label>
+      </div>
+      <datalist id="trade-list">{% for t in trade_suggestions %}<option value="{{ t }}">{% endfor %}</datalist>
+      <datalist id="town-list">{% for t in town_suggestions %}<option value="{{ t }}">{% endfor %}</datalist>
+      <div class="row">
+        <label class="check"><input type="checkbox" name="include_no_phone" value="1"> Include leads with no phone</label>
+        <label class="check"><input type="checkbox" name="no_audit" value="1"> Skip website audit</label>
+        <label class="check"><input type="checkbox" name="save_trade" value="1"> Save a new trade to trades.yaml</label>
+      </div>
+      <div class="row"><button class="btn btn-primary" type="submit">Search</button>
+        <span class="small dim">{% for m in meter %}{{ m.label }} {{ m.used }}/{{ m.free }}{% if not loop.last %} · {% endif %}{% endfor %}</span></div>
+    </form>
+    <div id="search-result" style="margin-top:14px"></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h3>Coverage</h3><span class="label">Trades × towns</span></div>
+    {% if coverage %}<div class="table-wrap"><table>
+      <thead><tr><th>Town</th><th>Trade</th><th class="n">Leads</th><th class="n">Dials</th><th class="n">Meetings</th><th>Last search</th></tr></thead>
+      <tbody>{% for c in coverage %}<tr><td>{{ c.town }}</td><td>{{ c.trade|trade_label }}</td><td class="n">{{ c.leads }}</td><td class="n">{{ c.dials }}</td><td class="n">{{ c.meetings }}</td><td class="small muted">{{ c.last_search|ago if c.last_search else '-' }}</td></tr>{% endfor %}</tbody>
+    </table></div>{% else %}<p class="muted small">Nothing searched yet. Areas you work show up here so you can see what's worked out and what's untouched.</p>{% endif %}
+  </div>
+</section>
+
+<aside id="side-panel" class="side-panel" aria-label="Lead detail">
+  <div class="row between" style="margin-bottom:10px"><span class="label">Lead</span><button class="icon-btn" onclick="lfClosePanel()" aria-label="Close">{% from "_icons.html" import icon %}{{ icon("x") }}</button></div>
+  <div id="side-panel-body"></div>
+</aside>
+{% if open_lead %}<script>document.addEventListener("DOMContentLoaded",function(){lfOpenPanel({{ open_lead|int }})});</script>{% endif %}
+{% endblock %}

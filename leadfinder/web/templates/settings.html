@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block content %}
+{% if message %}<div class="banner ok">{{ message }}</div>{% endif %}
+<section class="grid g-2">
+  <div class="card stack">
+    <div class="card-head"><h3>Daily call targets</h3></div>
+    {% for u in all_users %}
+    <form method="post" action="/settings/target" class="row"><input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="user_id" value="{{ u.id }}">
+      <span style="width:140px">{{ u.full_name }}</span><input type="number" name="target" value="{{ u.daily_call_target }}" min="1" style="width:100px"><button class="btn btn-secondary btn-sm">Save</button></form>
+    {% endfor %}
+    <form method="post" action="/settings/limits" class="form-grid" style="margin-top:10px"><input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <label class="f">Email send limit per day<input type="number" name="send_limit" value="{{ send_limit }}" min="0"></label>
+      <label class="f">Meeting length (minutes)<input type="number" name="meeting_minutes" value="{{ meeting_minutes }}" min="5" step="5"></label>
+      <button class="btn btn-secondary btn-sm">Save</button></form>
+  </div>
+  <div class="card">
+    <div class="card-head"><h3>Keys in .env</h3><span class="label">Set or not (values are never shown)</span></div>
+    <table><tbody>{% for k, ok in keys %}<tr><td class="small">{{ k }}</td><td class="n">{% if ok %}<span class="chip w-good">Set</span>{% else %}<span class="chip plain dim">Not set</span>{% endif %}</td></tr>{% endfor %}</tbody></table>
+  </div>
+</section>
+<section class="grid g-2">
+  <div class="card">
+    <div class="card-head"><h3>Google free allowance</h3><span class="label">{{ 'Free-tier mode ON' if free_tier else 'Free-tier mode OFF' }}</span></div>
+    <div class="stack">{% for m in meter %}
+      <div class="meter {{ m.level if m.level != 'ok' }}"><div class="row between small"><span>{{ m.label }}</span><span class="num">{{ m.used }}/{{ m.free }} (stops at {{ m.limit }})</span></div><div class="bar"><i style="width:{{ [m.pct, 100]|min }}%"></i></div></div>{% endfor %}
+      <div class="small dim">Resets {{ meter[0].reset_date_text }} (Pacific time).{% if not free_tier %} Monthly budget £{{ "%.2f"|format(budget) }}, spent £{{ "%.2f"|format(spent) }}.{% endif %}</div>
+    </div>
+    <div class="label" style="margin:16px 0 6px">This month by person</div>
+    <table><tbody>{% for r in by_user %}<tr><td>{{ r.name }}</td><td class="small muted">{{ r.sku }}</td><td class="n">{{ r.n }}</td></tr>{% else %}<tr><td class="muted small">No Google requests yet this month.</td></tr>{% endfor %}</tbody></table>
+  </div>
+  <div class="card">
+    <div class="card-head"><h3>Recent searches</h3><span class="label">Requests and cost</span></div>
+    <table><thead><tr><th>Search</th><th>Who</th><th class="n">Requests</th><th class="n">Leads</th><th class="n">£</th></tr></thead><tbody>
+    {% for s in by_search %}<tr><td>{{ s.trade|trade_label }} · {{ s.town }}<div class="small dim">{{ s.created_at|when }}</div></td><td><span class="badge-initials">{{ s.initials or '-' }}</span></td><td class="n">{{ s.requests_made }}</td><td class="n">{{ s.qualified }}</td><td class="n">{{ "%.2f"|format(s.est_cost_gbp) }}</td></tr>{% else %}<tr><td class="muted small">No searches yet.</td></tr>{% endfor %}
+    </tbody></table>
+  </div>
+</section>
+<section class="grid g-2">
+  <div class="card">
+    <div class="card-head"><h3>Call script</h3><span class="label">templates/call_script.md</span></div>
+    <form method="post" action="/settings/script" class="stack"><input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <textarea name="script" rows="16">{{ script }}</textarea><button class="btn btn-secondary btn-sm" style="align-self:flex-start">Save script</button></form>
+  </div>
+  <div class="card">
+    <div class="card-head"><h3>Cold email template</h3><span class="label">templates/cold_email.txt</span></div>
+    <form method="post" action="/settings/template" class="stack"><input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <textarea name="template" rows="16">{{ template }}</textarea>
+      <p class="small dim" style="margin:0">Placeholders: {name} {trade} {town} {hook} {preview_url} {my_name} {my_phone}. The footer with your name, address and the STOP line is always added. Under 120 words.</p>
+      <button class="btn btn-secondary btn-sm" style="align-self:flex-start">Save template</button></form>
+  </div>
+</section>
+<section class="grid g-2">
+  <div class="card">
+    <div class="card-head"><h3>Objection tags</h3><span class="label">One per line</span></div>
+    <form method="post" action="/settings/objections" class="stack"><input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <textarea name="tags" rows="9">{% for t in tags %}{{ t.label }}
+{% endfor %}</textarea><button class="btn btn-secondary btn-sm" style="align-self:flex-start">Save tags</button></form>
+  </div>
+  <div class="card" id="password">
+    <div class="card-head"><h3>Change password</h3></div>
+    {% if pw_error %}<div class="error-box" style="margin-bottom:10px">{{ pw_error }}</div>{% endif %}
+    <form method="post" action="/settings/password" class="stack"><input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <label class="f">Current password<input type="password" name="current" required autocomplete="current-password"></label>
+      <label class="f">New password (min 8)<input type="password" name="new" minlength="8" required autocomplete="new-password"></label>
+      <label class="f">New password again<input type="password" name="again" minlength="8" required autocomplete="new-password"></label>
+      <button class="btn btn-primary btn-sm" style="align-self:flex-start">Change password</button></form>
+    <div class="row" style="margin-top:16px"><span class="small muted">Theme</span><button class="btn btn-secondary btn-sm" onclick="lfToggleTheme()">Switch dark / light</button></div>
+  </div>
+</section>
+{% endblock %}

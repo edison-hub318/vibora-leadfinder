@@ -17,7 +17,7 @@ from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, URLSafeSerializer
 from markupsafe import Markup, escape
 
-from .. import (backup as backup_mod, calls as calls_mod, db, emailer, enrich,
+from .. import (backup as backup_mod, calls as calls_mod, campaigns as camp_mod, db, emailer, enrich,
                 leads as leads_mod, meetings as meetings_mod, phones, preview as preview_mod,
                 search as search_mod, stats as stats_mod, users)
 from ..clients import Clients
@@ -551,21 +551,26 @@ def create_app(settings: Settings, clients_factory: Callable[[Settings], Clients
     @app.post("/search", response_class=HTMLResponse)
     def start_search(request: Request, trade: str = Form(...), town: str = Form(...), max_leads: int = Form(30),
                      radius: float = Form(8.0), include_no_phone: str | None = Form(None), no_audit: str | None = Form(None),
-                     force: str | None = Form(None), save_trade: str | None = Form(None),
+                     force: str | None = Form(None), save_trade: str | None = Form(None), country: str = Form("GB"),
                      conn: sqlite3.Connection = Depends(get_conn)) -> Response:
+        try:
+            country = search_mod.norm_country(country)
+        except search_mod.SearchError as e:
+            return HTMLResponse(str(e), status_code=422, headers=toast(str(e), "error"))
         t = resolve_trade(settings, trade)
         if not t.known and save_trade:
             save_new_trade(settings, trade)
         opts = search_mod.SearchOptions(trade=trade, town=town, max_leads=max(1, min(200, max_leads)), radius_km=radius,
-                                        include_no_phone=bool(include_no_phone), audit=not no_audit, force=bool(force))
+                                        include_no_phone=bool(include_no_phone), audit=not no_audit, force=bool(force),
+                                        country=country)
         job_id = secrets.token_hex(8)
         guard = UsageGuard(conn, settings)
         state["jobs"][job_id] = {"status": "running", "stage": "Starting", "trade": trade, "town": town,
                                  "max_leads": opts.max_leads, "radius": radius,
-                                 "unknown_trade": not t.known, "planned": search_mod.planned_requests(conn, guard, town, opts.max_leads)}
+                                 "unknown_trade": not t.known, "planned": search_mod.planned_requests(conn, guard, town, opts.max_leads, None, country)}
         threading.Thread(target=run_job, args=(job_id, me(request).id, opts), daemon=True).start()
         return render(request, conn, "partials/search_progress.html", partial=True, job_id=job_id, job=state["jobs"][job_id],
-                      form={"trade": trade, "town": town, "max_leads": max_leads, "radius": radius,
+                      form={"trade": trade, "town": town, "max_leads": max_leads, "radius": radius, "country": country,
                             "include_no_phone": include_no_phone, "no_audit": no_audit})
 
     @app.get("/search/job/{job_id}", response_class=HTMLResponse)
@@ -644,13 +649,18 @@ def create_app(settings: Settings, clients_factory: Callable[[Settings], Clients
 
     def outreach_ctx(conn: sqlite3.Connection) -> dict[str, Any]:
         return {
-            "pending": emailer.drafts(conn, "pending_review"),
-            "approved": emailer.drafts(conn, "approved"),
+            "pending": emailer.drafts(conn, "pending_review", settings),
+            "approved": emailer.drafts(conn, "approved", settings),
             "sent": emailer.sent_emails(conn),
             "sent_today": emailer.sent_today(conn),
             "limit": emailer.daily_limit(conn, settings),
             "suppressed": emailer.suppression_list(conn),
             "smtp_ok": settings.smtp_configured,
+            "address_ok": bool(settings.business_address),
+            "campaigns": camp_mod.list_all(conn),
+            "campaign_trades": sorted(load_trades(settings)),
+            "website_statuses": camp_mod.ALL_WEBSITE_STATUSES,
+            "default_website": camp_mod.DEFAULT_WEBSITE_STATUSES,
         }
 
     @app.get("/outreach", response_class=HTMLResponse)
@@ -694,7 +704,7 @@ def create_app(settings: Settings, clients_factory: Callable[[Settings], Clients
     def outreach_send(request: Request, conn: sqlite3.Connection = Depends(get_conn)) -> Response:
         if not settings.smtp_configured:
             return outreach_reload(request, conn, "Set SMTP_HOST and FROM_EMAIL in .env first", "error")
-        approved = emailer.drafts(conn, "approved")
+        approved = emailer.drafts(conn, "approved", settings)
         blocked = [e for e in approved if e["block_reason"]]
         sendable = [e for e in approved if not e["block_reason"]]
         if not sendable:
@@ -711,6 +721,78 @@ def create_app(settings: Settings, clients_factory: Callable[[Settings], Clients
         threading.Thread(target=worker, daemon=True).start()
         return outreach_reload(request, conn, f"Sending {len(sendable)} email(s) in the background, 60-180s apart. "
                                               f"{len(blocked)} blocked.")
+
+    # ---- Campaigns (batch email) ----
+    @app.post("/campaigns", response_class=HTMLResponse)
+    async def campaign_create(request: Request, conn: sqlite3.Connection = Depends(get_conn)) -> Response:
+        form = await request.form()
+        try:
+            f = camp_mod.make_filters(str(form.get("country") or "GB"), str(form.get("trade") or "") or None,
+                                      str(form.get("town") or "") or None,
+                                      [str(v) for v in form.getlist("website")] or None,
+                                      int(str(form.get("min_score") or 0) or 0))
+            res = camp_mod.create(conn, settings, me(request).id, str(form.get("name") or ""), f,
+                                  limit=max(1, min(1000, int(str(form.get("limit") or 200) or 200))))
+        except (camp_mod.CampaignError, ValueError) as e:
+            return outreach_reload(request, conn, str(e), "error")
+        cnt = res.counts
+        blocked = sum(res.blocked.values())
+        return outreach_reload(request, conn, f"Drafted {res.drafted} ({cnt['matched']} match, {cnt['with_email']} with email"
+                                              + (f", {blocked} blocked" if blocked else "") + ")")
+
+    @app.post("/campaigns/{campaign_id}/{action}", response_class=HTMLResponse)
+    def campaign_action(request: Request, campaign_id: int, action: str, conn: sqlite3.Connection = Depends(get_conn)) -> Response:
+        uid = me(request).id
+        try:
+            camp = camp_mod.get(conn, campaign_id)
+            if action == "approve":
+                r = camp_mod.approve(conn, settings, uid, campaign_id)
+                msg = f"Approved {r.approved}" + (f", {sum(r.blocked.values())} blocked" if r.blocked else "")
+            elif action == "add":
+                r2 = camp_mod.extend(conn, settings, uid, campaign_id)
+                msg = f"Added {r2.drafted} new draft(s)"
+            elif action == "followup":
+                r3 = camp_mod.draft_followups(conn, settings, uid, campaign_id)
+                msg = f"Drafted {len(r3.created)} follow-up(s): approve to queue them"
+            elif action == "pause":
+                msg = f"Paused; {camp_mod.pause(conn, uid, campaign_id)} email(s) back to awaiting approval"
+            elif action == "send":
+                if not settings.smtp_configured:
+                    return outreach_reload(request, conn, "Set SMTP_HOST and FROM_EMAIL in .env first", "error")
+                if camp["status"] == "paused":
+                    return outreach_reload(request, conn, "This campaign is paused: approve to resume", "error")
+                queued = camp_mod.stats(conn, campaign_id)["queued"]
+                room = max(0, emailer.daily_limit(conn, settings) - emailer.sent_today(conn))
+                if not queued or not room:
+                    return outreach_reload(request, conn, "Nothing queued" if not queued else "Today's send limit is used up", "error")
+
+                def worker() -> None:
+                    c2 = open_conn()
+                    try:
+                        camp_mod.send(c2, settings, clients(), uid, campaign_id)
+                    finally:
+                        c2.close()
+
+                threading.Thread(target=worker, daemon=True).start()
+                msg = f"Sending up to {min(queued, room)} in the background, 60-180s apart"
+            else:
+                raise HTTPException(404)
+        except camp_mod.CampaignError as e:
+            return outreach_reload(request, conn, str(e), "error")
+        return outreach_reload(request, conn, msg)
+
+    @app.post("/outreach/lead/{lead_id}/{action}", response_class=HTMLResponse)
+    def outreach_lead_action(request: Request, lead_id: int, action: str, conn: sqlite3.Connection = Depends(get_conn)) -> Response:
+        try:
+            if action == "replied":
+                emailer.mark_replied(conn, lead_id, me(request).id)
+                return outreach_reload(request, conn, "Marked as replied: no follow-up will be drafted")
+            if action == "bounced":
+                addr = emailer.mark_bounced(conn, lead_id, me(request).id)
+                return outreach_reload(request, conn, f"{addr} marked as bounced and suppressed")
+        except (emailer.EmailError, LeadError) as e:
+            return outreach_reload(request, conn, str(e), "error")
+        raise HTTPException(404)
 
     @app.post("/outreach/suppress", response_class=HTMLResponse)
     def outreach_suppress(request: Request, email: str = Form(...), conn: sqlite3.Connection = Depends(get_conn)) -> Response:

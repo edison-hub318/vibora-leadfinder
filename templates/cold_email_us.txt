@@ -1,0 +1,16 @@
+# US cold email template (used by campaigns with --country US unless you pick another).
+# Placeholders: {name} {trade} {town} {hook} {preview_url} {my_name} {my_phone}
+# The footer (your name, BUSINESS_ADDRESS and the opt-out line) is always added for you;
+# CAN-SPAM requires that postal address, so the tool won't send US email without it.
+# Short first emails get the most replies: aim for 50-80 words.
+Subject: {name} website
+
+Hi,
+
+Came across {name} while looking at {trade} in {town}. One thing jumped out: {hook}. Most homeowners pick a contractor from their phone in under a minute, so that's likely costing you jobs.
+
+I put together a quick mock-up of what a better site could look like: {preview_url}
+
+Worth a 15-minute call to walk through it?
+
+{my_name}

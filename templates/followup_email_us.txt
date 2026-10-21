@@ -1,0 +1,13 @@
+# US follow-up template (sent at most once, 5+ days after the first email with no reply).
+# Same placeholders as cold_email_us.txt. The footer is added automatically.
+Subject: Re: {name} website
+
+Hi,
+
+Quick bump in case this got buried. Happy to send a couple of examples of sites we've built for other {trade} businesses.
+
+Mock-up's here if you want a look: {preview_url}
+
+If the timing's wrong, no worries at all.
+
+{my_name}

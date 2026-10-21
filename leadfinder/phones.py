@@ -1,4 +1,8 @@
-"""UK phone number normalising and classification."""
+"""Phone number normalising and classification: UK numbers, plus US/Canada (+1) numbers.
+
+US numbers are stored as "+1 415 555 0123" so every helper can tell them apart from UK
+numbers without knowing the lead's country.
+"""
 from __future__ import annotations
 
 import re
@@ -7,6 +11,7 @@ from dataclasses import dataclass
 MOBILE = "mobile"
 LANDLINE = "landline"
 NON_GEOGRAPHIC = "non_geographic"
+US = "us"  # US/Canada number: no reliable mobile/landline split
 INVALID = "invalid"
 NONE = "none"
 
@@ -20,7 +25,7 @@ class PhoneInfo:
 
     @property
     def valid(self) -> bool:
-        return self.kind in {MOBILE, LANDLINE, NON_GEOGRAPHIC}
+        return self.kind in {MOBILE, LANDLINE, NON_GEOGRAPHIC, US}
 
 
 def to_national_digits(raw: str | None) -> str:
@@ -41,10 +46,31 @@ def to_national_digits(raw: str | None) -> str:
     return digits
 
 
-def classify(raw: str | None) -> PhoneInfo:
+def _classify_us(raw: str) -> PhoneInfo:
+    digits = re.sub(r"\D", "", re.split(r"(?i)\s*(?:ext\.?|extension|x)\s*\d+\s*$", raw)[0])
+    if len(digits) == 11 and digits.startswith("1"):
+        digits = digits[1:]
+    # NANP: area code and exchange can't start with 0 or 1; 555-01xx is fiction-only but still valid shape.
+    if len(digits) != 10 or digits[0] in "01" or digits[3] in "01":
+        return PhoneInfo(raw, "", "", INVALID)
+    return PhoneInfo(raw, digits, "+1" + digits, US)
+
+
+def us_storage(raw: str | None) -> str:
+    """Google's US 'nationalPhoneNumber' ('(415) 555-0123') -> '+1 415 555 0123' ('' if invalid)."""
+    info = _classify_us(raw or "")
+    if not info.valid:
+        return ""
+    d = info.national
+    return f"+1 {d[:3]} {d[3:6]} {d[6:]}"
+
+
+def classify(raw: str | None, country: str = "GB") -> PhoneInfo:
     raw = (raw or "").strip()
     if not raw:
         return PhoneInfo(raw, "", "", NONE)
+    if (country or "GB").upper() == "US" or re.sub(r"[\s().-]", "", raw).startswith("+1"):
+        return _classify_us(raw)
     nat = to_national_digits(raw)
     if not nat.startswith("0") or nat.startswith("00"):
         return PhoneInfo(raw, "", "", INVALID)
@@ -83,6 +109,9 @@ def pretty(raw: str | None) -> str:
     info = classify(raw)
     if not info.valid:
         return raw or ""
+    if info.kind == US:
+        d = info.national
+        return f"({d[:3]}) {d[3:6]}-{d[6:]}"
     n = info.national
     if n.startswith("02") and len(n) == 11:
         return f"{n[:3]} {n[3:7]} {n[7:]}"

@@ -12,7 +12,7 @@
 <div class="banner">
   {{ job.error }}
   <form hx-post="/search" hx-target="#search-result" class="row" style="margin-top:10px">
-    <input type="hidden" name="trade" value="{{ form.trade }}"><input type="hidden" name="town" value="{{ form.town }}">
+    <input type="hidden" name="trade" value="{{ form.trade }}"><input type="hidden" name="town" value="{{ form.town }}"><input type="hidden" name="country" value="{{ form.country or 'GB' }}">
     <input type="hidden" name="max_leads" value="{{ job.max_leads or 30 }}"><input type="hidden" name="radius" value="{{ job.radius or 8 }}"><input type="hidden" name="force" value="1">
     <button class="btn btn-primary btn-sm">Search anyway</button>
   </form>

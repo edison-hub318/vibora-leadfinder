@@ -18,6 +18,14 @@ plumbers:
   types: [plumber]
   keywords: [plumb, heating, boiler, drain, bathroom, gas]
   services: [Leaks and burst pipes, Boiler servicing and repairs, Bathroom installations, Emergency call-outs]
+hvac:
+  label: HVAC
+  family: trades
+  # US: "HVAC" is the everyday word. UK: heating/air-con engineers; try "air conditioning" or "heating engineers".
+  synonyms: [hvac contractor, air conditioning repair, heating and cooling, furnace repair, heat pump installer, air conditioning installer]
+  types: [hvac_contractor, plumber, general_contractor]
+  keywords: [hvac, heating, cooling, air condition, air-condition, furnace, heat pump, refrigeration, climate, comfort, mechanical, a/c]
+  services: [AC repair and installation, Furnace and heat pump service, Seasonal tune-ups, 24/7 emergency service]
 electricians:
   label: Electricians
   family: trades

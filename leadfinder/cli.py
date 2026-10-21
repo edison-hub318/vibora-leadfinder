@@ -12,14 +12,14 @@ from rich.panel import Panel
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn
 from rich.table import Table
 
-from . import (audit as audit_mod, backup as backup_mod, calls as calls_mod, db, emailer, enrich,
+from . import (audit as audit_mod, backup as backup_mod, calls as calls_mod, campaigns as camp_mod, db, emailer, enrich,
                leads as leads_mod, meetings as meetings_mod, phones, preview as preview_mod, search as search_mod,
                stats as stats_mod, users)
 from .clients import Clients
 from .config import Settings, load_settings
 from .freetier import UsageGuard
 from .leads import LeadError
-from .timeutil import fmt_local, parse_local
+from .timeutil import fmt_local, now_london, parse_local
 from .trades import load_trades, resolve_trade, save_new_trade
 
 # safe_box + no emoji: renders in Windows Terminal and the old PowerShell console alike.
@@ -34,6 +34,8 @@ backup_app = typer.Typer(help="Backups (also run automatically once a day).", in
 app.add_typer(user_app, name="user")
 app.add_typer(dnc_app, name="dnc")
 app.add_typer(backup_app, name="backup")
+campaign_app = typer.Typer(help="Batch cold email: one template to a whole segment of leads.", no_args_is_help=True)
+app.add_typer(campaign_app, name="campaign")
 
 STATUS_STYLE = {
     "none": "bold red", "social_only": "red", "free_builder": "yellow", "poor": "yellow",
@@ -244,6 +246,7 @@ def search(
     force: bool = typer.Option(False, "--force", help="Search again even if done in the last 14 days"),
     budget: Optional[int] = typer.Option(None, "--budget", help="Max Google requests for this search"),
     save_trade: bool = typer.Option(False, "--save-trade", help="Add an unknown trade to trades.yaml"),
+    country: str = typer.Option("GB", "--country", help='GB (UK, default) or US, e.g. --country US --town "Austin, TX"'),
 ) -> None:
     """Find local businesses and rank them as leads."""
     c = ctx()
@@ -255,7 +258,11 @@ def search(
             save_new_trade(c.settings, trade)
             console.print("[green]Saved to trades.yaml.[/]")
     guard = UsageGuard(c.conn, c.settings)
-    plan = search_mod.planned_requests(c.conn, guard, town, max_leads, budget)
+    try:
+        country = search_mod.norm_country(country)
+    except search_mod.SearchError as e:
+        fail(str(e))
+    plan = search_mod.planned_requests(c.conn, guard, town, max_leads, budget, country)
     st = guard.status("text_search_enterprise")
     console.print(
         f"Planned: about [bold]{plan['text_search']}[/] Text Search request(s) (max {plan['cap']})"
@@ -282,7 +289,7 @@ def search(
 
     opts = search_mod.SearchOptions(trade=trade, town=town, max_leads=max_leads, radius_km=radius,
                                     include_no_phone=include_no_phone, audit=not no_audit, force=force,
-                                    request_cap=budget)
+                                    request_cap=budget, country=country)
     try:
         rep = search_mod.run_search(c.conn, c.settings, c.clients, user, opts, progress=on)
     except search_mod.RepeatSearch as e:
@@ -477,7 +484,7 @@ def log(
     if res["meeting_id"]:
         m = meetings_mod.get_meeting(c.conn, res["meeting_id"])
         console.print(f"Meeting: {fmt_local(m['start_at'])}. Calendar link:\n{meetings_mod.google_calendar_url(m)}")
-        console.print(f"[dim]Or download an .ics file from the Meetings page (leadfinder meetings).[/]")
+        console.print("[dim]Or download an .ics file from the Meetings page (leadfinder meetings).[/]")
 
 
 @app.command()
@@ -638,7 +645,7 @@ def review() -> None:
     """Go through drafts one by one: a = approve, e = edit, s = skip, d = delete."""
     c = ctx()
     user = c.require_user()
-    items = emailer.drafts(c.conn, "pending_review")
+    items = emailer.drafts(c.conn, "pending_review", c.settings)
     if not items:
         console.print("No drafts waiting. Create some with: leadfinder draft")
         return
@@ -752,6 +759,229 @@ def replied(lead_id: int) -> None:
     user = c.require_user()
     emailer.mark_replied(c.conn, lead_id, user.id)
     console.print("Noted.")
+
+
+@app.command()
+def bounced(lead_id: int) -> None:
+    """The last email to this lead bounced: suppress the address and count it in campaign stats."""
+    c = ctx()
+    user = c.require_user()
+    try:
+        addr = emailer.mark_bounced(c.conn, lead_id, user.id)
+    except (emailer.EmailError, LeadError) as e:
+        fail(str(e))
+    console.print(f"Marked as bounced; {addr} is now suppressed.")
+
+
+# ---------------------------------------------------------------------------
+# Campaigns (batch cold email)
+# ---------------------------------------------------------------------------
+
+def _print_blocked(blocked: dict[str, int]) -> None:
+    for reason, n in sorted(blocked.items(), key=lambda kv: -kv[1]):
+        console.print(f"  [yellow]{n} blocked: {reason}[/]")
+
+
+def _print_draft_result(res: camp_mod.DraftResult, name: str) -> None:
+    cnt = res.counts
+    console.print(
+        f"Segment: [bold]{cnt.get('matched', 0)}[/] leads match, {cnt.get('with_email', 0)} have an email address, "
+        f"{cnt.get('available', 0)} not emailed yet."
+    )
+    if cnt.get("matched", 0) and cnt.get("with_email", 0) < cnt["matched"] / 2:
+        console.print("[dim]Leads with no website rarely have a findable email: call those instead "
+                      "(leadfinder next), or add addresses with add-email.[/]")
+    console.print(f"Drafted [bold]{res.drafted}[/] email(s).")
+    _print_blocked(res.blocked)
+    for nm, reason in res.skipped[:10]:
+        console.print(f"  [yellow]Skipped {nm}: {reason}[/]")
+    for i, e in enumerate(res.samples, 1):
+        console.print(Panel(f"To: {e['to_email']}\nSubject: {e['subject']}\n\n{e['body']}",
+                            title=f"Sample {i} of {len(res.samples)}", safe_box=True))
+    if res.drafted:
+        console.print(f"Next: check the samples, then [bold]leadfinder campaign approve \"{name}\"[/]")
+
+
+@campaign_app.command("create")
+def campaign_create(
+    name: str = typer.Argument(..., help='A short name, e.g. "hvac-austin-oct"'),
+    country: str = typer.Option("GB", "--country", help="GB (UK) or US"),
+    trade: Optional[str] = typer.Option(None, "--trade", help='e.g. "hvac" (blank = all trades)'),
+    town: Optional[str] = typer.Option(None, "--town", help="blank = all towns"),
+    website: Optional[str] = typer.Option(
+        None, "--website", help="Comma list of website statuses. Default: none,social_only,free_builder,poor"),
+    min_score: int = typer.Option(0, "--min-score"),
+    template: Optional[str] = typer.Option(None, "--template", help="File in templates/ (default depends on country)"),
+    followup_template: Optional[str] = typer.Option(None, "--followup-template"),
+    limit: int = typer.Option(200, "--limit", help="Most drafts to create now (top up later with `campaign add`)"),
+) -> None:
+    """Draft one email per matching lead, using one template."""
+    c = ctx()
+    user = c.require_user()
+    try:
+        f = camp_mod.make_filters(country, trade, town, website, min_score)
+        res = camp_mod.create(c.conn, c.settings, user.id, name, f, template, followup_template, limit)
+    except camp_mod.CampaignError as e:
+        fail(str(e))
+    console.print(f"[bold]Campaign '{name}'[/]: {f.describe()}")
+    _print_draft_result(res, name)
+
+
+@campaign_app.command("add")
+def campaign_add(name: str, limit: int = typer.Option(200, "--limit")) -> None:
+    """Top up a campaign with new matching leads (e.g. after more searches)."""
+    c = ctx()
+    user = c.require_user()
+    try:
+        res = camp_mod.extend(c.conn, c.settings, user.id, name, limit)
+    except camp_mod.CampaignError as e:
+        fail(str(e))
+    _print_draft_result(res, name)
+
+
+@campaign_app.command("approve")
+def campaign_approve(name: str, yes: bool = typer.Option(False, "--yes", help="Skip the confirmation")) -> None:
+    """Approve every sendable draft in the campaign in one go (also resumes a paused one)."""
+    c = ctx()
+    user = c.require_user()
+    try:
+        camp = camp_mod.get(c.conn, name)
+    except camp_mod.CampaignError as e:
+        fail(str(e))
+    waiting = camp_mod.pending(c.conn, camp["id"])
+    if not waiting:
+        console.print("Nothing waiting for approval.")
+        return
+    sample = waiting[0]
+    console.print(Panel(f"To: {sample['to_email']}\nSubject: {sample['subject']}\n\n{sample['body']}",
+                        title=f"Example of {len(waiting)} draft(s)", safe_box=True))
+    if not yes and not typer.confirm(f"Approve all sendable drafts in '{camp['name']}'?", default=False):
+        console.print("Nothing approved.")
+        return
+    res = camp_mod.approve(c.conn, c.settings, user.id, camp["id"])
+    console.print(f"Approved [bold]{res.approved}[/]. Send with: leadfinder campaign send \"{camp['name']}\"")
+    _print_blocked(res.blocked)
+
+
+@campaign_app.command("send")
+def campaign_send(name: str, dry_run: bool = typer.Option(False, "--dry-run")) -> None:
+    """Send the campaign's approved emails, up to today's limit. Run it again each day until done."""
+    c = ctx()
+    user = c.require_user()
+    if not dry_run and not c.settings.smtp_configured:
+        fail("Set SMTP_HOST, SMTP_USER, SMTP_PASSWORD and FROM_EMAIL in .env first (or use --dry-run).")
+    try:
+        camp = camp_mod.get(c.conn, name)
+    except camp_mod.CampaignError as e:
+        fail(str(e))
+    hour = now_london().hour
+    if camp["country"] == "US" and not dry_run and not (13 <= hour <= 21):
+        console.print("[yellow]It's night in the US right now. Emails sent between 13:00 and 21:00 UK time "
+                      "land in US working hours and tend to get more replies.[/]")
+        if not typer.confirm("Send anyway?", default=False):
+            return
+
+    def on(event: str, data: dict) -> None:
+        if event == "wait":
+            console.print(f"[dim]Waiting {data['seconds']:.0f}s before the next email...[/]")
+        elif event == "sent":
+            console.print(f"Sent to {data['email']['to_email']}")
+
+    try:
+        rep = camp_mod.send(c.conn, c.settings, c.clients, user.id, camp["id"], dry_run=dry_run, on_event=on)
+    except (camp_mod.CampaignError, emailer.EmailError) as e:
+        fail(str(e))
+    if dry_run:
+        for m in rep.would_send[:3]:
+            console.print(Panel(m["message"], title=f"Would send (email {m['id']})", safe_box=True))
+        console.print(f"[bold]Dry run:[/] {len(rep.would_send)} email(s) would go today. Nothing was sent.")
+    else:
+        console.print(f"Sent {len(rep.sent)}. Today: {rep.sent_before + len(rep.sent)}/{rep.limit}.")
+    for reason, n in rep.skip_summary().items():
+        console.print(f"  [yellow]Skipped {n}: {reason}[/]")
+    left = camp_mod.stats(c.conn, camp["id"])["queued"]
+    if rep.stopped_at_limit:
+        console.print(f"[yellow]Daily limit reached. {left} still queued: run this again tomorrow.[/]")
+    for e, msg in rep.errors:
+        console.print(f"  [red]Failed {e['to_email']}: {msg}[/]")
+
+
+@campaign_app.command("followup")
+def campaign_followup(name: str, limit: int = typer.Option(200, "--limit")) -> None:
+    """Draft one follow-up for campaign leads emailed 5+ days ago with no reply (then approve + send)."""
+    c = ctx()
+    user = c.require_user()
+    try:
+        rep = camp_mod.draft_followups(c.conn, c.settings, user.id, name, limit)
+    except camp_mod.CampaignError as e:
+        fail(str(e))
+    console.print(f"Drafted {len(rep.created)} follow-up(s). Next: leadfinder campaign approve \"{name}\"")
+    for nm, reason in rep.skipped:
+        console.print(f"  [yellow]Skipped {nm}: {reason}[/]")
+
+
+@campaign_app.command("pause")
+def campaign_pause(name: str) -> None:
+    """Stop sending: queued emails go back to awaiting approval."""
+    c = ctx()
+    user = c.require_user()
+    try:
+        n = camp_mod.pause(c.conn, user.id, name)
+    except camp_mod.CampaignError as e:
+        fail(str(e))
+    console.print(f"Paused. {n} queued email(s) moved back to awaiting approval.")
+
+
+@campaign_app.command("list")
+def campaign_list() -> None:
+    """All campaigns with their results."""
+    c = ctx()
+    rows = camp_mod.list_all(c.conn)
+    if not rows:
+        console.print('No campaigns yet. Start one with: leadfinder campaign create "name" --trade ... --country ...')
+        return
+    t = Table(safe_box=True)
+    for col in ("Name", "Status", "Sent", "Queued", "Replies", "Meetings", "Meetings/100", "vs 2026 benchmark"):
+        t.add_column(col)
+    for r in rows:
+        st = r["stats"]
+        t.add_row(r["name"], r["status"], str(st["sent"]), str(st["queued"] + st["pending"]),
+                  f"{st['replied']} ({st['reply_rate']}%)", str(st["meetings"]), str(st["meeting_rate"]),
+                  st["meeting_band"])
+    console.print(t)
+
+
+@campaign_app.command("stats")
+def campaign_stats(name: str) -> None:
+    """The full funnel for one campaign, compared with 2026 cold email benchmarks."""
+    c = ctx()
+    try:
+        camp = camp_mod.get(c.conn, name)
+    except camp_mod.CampaignError as e:
+        fail(str(e))
+    st = camp_mod.stats(c.conn, camp["id"])
+    console.print(f"[bold]{camp['name']}[/] ({camp['status']}): {camp['filters'].describe()}")
+    console.print(f"Template: {camp['template']}   Follow-up: {camp['followup_template']}")
+    t = Table(safe_box=True, show_header=False)
+    t.add_column("")
+    t.add_column("", justify="right")
+    for label, val in [
+        ("Awaiting approval", st["pending"]), ("Queued to send", st["queued"]),
+        ("First emails sent", st["sent"]), ("Bounced", f"{st['bounced']} ({st['bounce_rate']}%)"),
+        ("Delivered", st["delivered"]), ("Follow-ups sent", st["followups"]),
+        ("Replied", f"{st['replied']} ({st['reply_rate']}%, {st['reply_band']})"),
+        ("Meetings booked", f"{st['meetings']} ({st['meeting_rate']} per 100, {st['meeting_band']})"),
+        ("Emails per meeting", st["emails_per_meeting"] or "-"), ("Won", st["won"]),
+        ("Opted out", st["unsubscribed"]),
+    ]:
+        t.add_row(label, str(val))
+    console.print(t)
+    console.print("[dim]2026 benchmarks per 100 delivered: replies 1.5-3 average, 3-5 good; "
+                  "meetings 0.3-1 average, 1-2 good, 2+ great.[/]")
+    if st["delivered"] < 100:
+        console.print("[dim]Under 100 delivered, these rates swing a lot: one meeting is a big jump.[/]")
+    for w in camp_mod.health_warnings(st):
+        console.print(f"[yellow]{w}[/]")
 
 
 # ---------------------------------------------------------------------------

@@ -2,8 +2,8 @@
 leads.db
 leads.db-*
 *.db-journal
-backups/
-previews/
+/backups/
+/previews/
 .leadfinder-user.json
 .venv/
 __pycache__/

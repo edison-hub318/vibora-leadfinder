@@ -40,6 +40,7 @@ CHECKED_KEYS = [
     "FROM_NAME",
     "FROM_EMAIL",
     "DAILY_SEND_LIMIT",
+    "WARMUP_START",
     "MY_NAME",
     "MY_PHONE",
     "BUSINESS_ADDRESS",
@@ -90,6 +91,7 @@ class Settings:
     from_name: str = "Vibora"
     from_email: str = ""
     daily_send_limit: int = 30
+    warmup_start: str = ""  # YYYY-MM-DD: first day this mailbox sent cold email (ramps the daily limit)
     my_name: str = ""
     my_phone: str = ""
     business_address: str = ""
@@ -195,6 +197,7 @@ def load_settings(home: Path | None = None, generate_secret: bool = True) -> Set
         from_name=g("FROM_NAME", "Vibora"),
         from_email=g("FROM_EMAIL"),
         daily_send_limit=_int(values.get("DAILY_SEND_LIMIT"), 30),
+        warmup_start=g("WARMUP_START"),
         my_name=g("MY_NAME"),
         my_phone=g("MY_PHONE"),
         business_address=g("BUSINESS_ADDRESS"),

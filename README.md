@@ -159,8 +159,14 @@ leadfinder search "electricians" --town "Horley" --force      # repeat a search 
 leadfinder search "plumbers" --town "Crawley" --no-audit      # skip website checks (faster)
 leadfinder search "saddlers" --town "Crawley" --save-trade    # a trade not in trades.yaml, and save it
 leadfinder search "plumbers" --town "Crawley" --include-no-phone --budget 5
+leadfinder search "hvac" --town "Austin, TX" --country US     # US search (default is UK)
 leadfinder trades                                              # list known trades
 ```
+
+**US searches** (`--country US`) use Google's US region, keep US phone numbers (stored as
+`+1 512 555 0142`), read ZIP codes, and skip Companies House and the sole-trader guess (both are
+UK-only). Put the state in the town (`"Austin, TX"`) so Google finds the right one. TPS only
+applies to UK numbers.
 
 `--max N` means **N new, qualified, callable leads**, not N Google results. Each search:
 
@@ -241,7 +247,7 @@ leadfinder set-type 12 limited_company
 leadfinder set-type 12 sole_trader
 ```
 
-### Cold email (UK PECR rules are built in)
+### Cold email: one-off (UK PECR and US CAN-SPAM rules are built in)
 
 ```powershell
 leadfinder find-emails --limit 20       # look on each lead's own website (searches do this too)
@@ -252,22 +258,68 @@ leadfinder send --dry-run               # shows exactly what would be sent
 leadfinder send
 leadfinder followup                     # one follow-up, 5+ days after the first email, if no reply
 leadfinder replied 12                   # they replied: no follow-up
+leadfinder bounced 12                   # it bounced: the address is suppressed and counted in stats
 leadfinder suppress bob@example.co.uk   # never email again
 leadfinder unsubscribe-check            # paste opt-out replies; their addresses are suppressed
 ```
 
 The rules the tool enforces (you can't turn them off):
 
-- Emails go **only to limited companies**. Sole traders and partnerships need prior consent under
-  PECR, so they're refused (call them instead). Unknown company types are refused too: run
-  `classify` or `set-type` first.
+- **UK leads:** emails go **only to limited companies**. Sole traders and partnerships need prior
+  consent under PECR, so they're refused (call them instead). Unknown company types are refused
+  too: run `classify` or `set-type` first.
+- **US leads:** any business can be emailed (CAN-SPAM is opt-out), but every email must carry a
+  real postal address, so US email is refused until `BUSINESS_ADDRESS` is set.
 - Never more than `DAILY_SEND_LIMIT` a day (counted from the database), with a random 60-180 second
-  wait between emails.
+  wait between emails. With `WARMUP_START` set, a new mailbox ramps up: 10 a day in week 1, 20 in
+  week 2, and so on up to `DAILY_SEND_LIMIT`.
 - Never to a suppressed address; never twice to the same lead (except one follow-up).
 - Plain text, one recipient, a `List-Unsubscribe` header, and a footer with your name,
   `BUSINESS_ADDRESS` and "Reply STOP or 'unsubscribe' and I won't contact you again."
 - Email addresses are only ever ones you add or ones published on the business's own website. They
   are never guessed.
+
+### Cold email campaigns (batch: one template, a whole segment)
+
+A campaign takes every lead that matches a filter and sends them all the same template (filled in
+with each lead's name, town and website problem). You approve the whole batch at once, and it
+sends a daily batch until it's done.
+
+```powershell
+# 1. Find leads (repeat for more towns)
+leadfinder search "hvac" --town "Austin, TX" --country US --max 60
+# 2. Draft one email per matching lead; prints 3 samples to check
+leadfinder campaign create "hvac-austin-oct" --country US --trade hvac
+leadfinder campaign create "crawley-poor-sites" --trade plumbers --website poor,free_builder --min-score 50
+# 3. Approve everything that passes the rules, in one go
+leadfinder campaign approve "hvac-austin-oct"
+# 4. Send today's batch (run again each day until nothing is queued)
+leadfinder campaign send "hvac-austin-oct" --dry-run
+leadfinder campaign send "hvac-austin-oct"
+# 5. Five days later: one follow-up to anyone who didn't reply, then approve + send again
+leadfinder campaign followup "hvac-austin-oct"
+# Results vs 2026 benchmarks, and housekeeping
+leadfinder campaign stats "hvac-austin-oct"
+leadfinder campaign list
+leadfinder campaign add "hvac-austin-oct"      # top up with leads found by newer searches
+leadfinder campaign pause "hvac-austin-oct"    # stop; queued emails go back to awaiting approval
+```
+
+- `--website` picks which website statuses to include. Default: `none,social_only,free_builder,poor`.
+  Others: `ok`, `good`, `unchecked`.
+- Templates: `templates\cold_email.txt` for UK, `templates\cold_email_us.txt` for US (and
+  matching follow-ups). Use `--template my_file.txt` for your own file in `templates\`.
+- Every one-off rule above applies to campaign email too. Campaign email doesn't appear in
+  `review` or `send`; it only moves with the `campaign` commands (or the Campaigns card on the
+  dashboard's Outreach page).
+- **Leads with no website usually have no email address** (the tool only finds addresses
+  published on the business's own site). `campaign create` tells you how many leads matched and how
+  many have an email. Call the rest.
+- US campaigns warn you if you send outside 13:00-21:00 UK time (US working hours).
+- `stats` counts replies (mark them with `replied <id>` or the Replied button) and meetings booked
+  after the first campaign email. Mark bounces with `bounced <id>` so bounce rate stays honest.
+- To send each day without remembering, add a daily Windows Task Scheduler job that runs
+  `leadfinder.bat campaign send "hvac-austin-oct"` at about 14:30 (US morning).
 
 ### Preview sites
 
@@ -371,6 +423,8 @@ The PC must be on (and `leadfinder ui` running) for others to reach it.
 | `website_rules.yaml` | Social/builder domains and the audit thresholds |
 | `free_tier.yaml` | Google free allowances and per-search cap |
 | `templates\cold_email.txt`, `templates\followup_email.txt` | Email templates (also editable in Settings) |
+| `templates\cold_email_us.txt`, `templates\followup_email_us.txt` | US campaign templates |
+| `templates\previews\*.html.j2` | Preview-site layouts (`_base.html.j2` is shared) |
 | `templates\call_script.md` | Call script (also editable in Settings) |
 | `templates\previews\` | Preview site designs |
 | `leadfinder\scoring.py` | The scoring formula (one commented function) |

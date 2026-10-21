@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>{{ name }} | {{ trade_label }} in {{ town }}</title>
+<meta name="description" content="{{ name }}: {{ tagline }}">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{--bg:{{ palette.bg }};--accent:{{ palette.accent }};--ink:{{ palette.ink }};--soft:{{ palette.soft }}}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Arial,sans-serif;color:var(--ink);background:#fff;line-height:1.55}
+  a{color:inherit}
+  .wrap{max-width:1040px;margin:0 auto;padding:0 20px}
+  header.top{background:var(--bg);color:#fff}
+  .bar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 0}
+  .brand{font-weight:700;font-size:18px;letter-spacing:-.01em}
+  .call{display:inline-block;background:var(--accent);color:var(--ink);font-weight:700;text-decoration:none;padding:12px 20px;border-radius:999px;white-space:nowrap}
+  .hero{padding:56px 0 72px}
+  .hero h1{font-size:clamp(30px,6vw,52px);line-height:1.1;letter-spacing:-.02em;max-width:16ch}
+  .hero p{margin:16px 0 28px;font-size:18px;opacity:.85;max-width:46ch}
+  section{padding:56px 0}
+  section h2{font-size:clamp(24px,4vw,34px);letter-spacing:-.01em;margin-bottom:24px}
+  .grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+  .card{background:var(--soft);border-radius:16px;padding:22px}
+  .card h3{font-size:17px;margin-bottom:6px}
+  .alt{background:var(--soft)}
+  .alt .card{background:#fff}
+  .areas{display:flex;flex-wrap:wrap;gap:10px;list-style:none}
+  .areas li{background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:999px;padding:8px 16px}
+  .contact{background:var(--bg);color:#fff;text-align:center}
+  .contact p{opacity:.85;margin-bottom:24px}
+  footer{padding:24px 0;font-size:13px;color:#666;text-align:center}
+</style>
+</head>
+<body class="family-{{ family }}">
+<header class="top">
+  <div class="wrap bar">
+    <div class="brand">{{ name }}</div>
+    {% if tel %}<a class="call" href="tel:{{ tel }}">Call now</a>{% endif %}
+  </div>
+  <div class="wrap hero">
+    <h1>{{ trade_label }} in {{ town }}</h1>
+    <p>{{ tagline }}</p>
+    {% if tel %}<a class="call" href="tel:{{ tel }}">{{ cta }}{% if phone %}: {{ phone }}{% endif %}</a>{% endif %}
+  </div>
+</header>
+
+<main>
+  <section id="services">
+    <div class="wrap">
+      <h2>What we do</h2>
+      <div class="grid">
+        {% for s in services %}<div class="card"><h3>{{ s }}</h3></div>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <section class="alt" id="why">
+    <div class="wrap">
+      <h2>Why choose {{ name }}</h2>
+      <div class="grid">
+        {% for heading, body in why %}<div class="card"><h3>{{ heading }}</h3><p>{{ body }}</p></div>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <section id="areas">
+    <div class="wrap">
+      <h2>Areas we cover</h2>
+      <ul class="areas">
+        {% for a in areas %}<li>{{ a }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </section>
+
+  <section class="contact" id="contact">
+    <div class="wrap">
+      <h2>Get in touch</h2>
+      <p>Friendly, local {{ trade_singular }} serving {{ town }} and nearby.</p>
+      {% if tel %}<a class="call" href="tel:{{ tel }}">{{ cta }}{% if phone %}: {{ phone }}{% endif %}</a>{% endif %}
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">&copy; {{ year }} {{ name }}. Concept design by Vibora.</div>
+</footer>
+</body>
+</html>

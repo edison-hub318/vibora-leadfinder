@@ -25,9 +25,16 @@ BAD_EMAIL_PARTS = (
 POSTCODE_RE = re.compile(r"\b([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})\b", re.I)
 
 
-def extract_postcode(address: str | None) -> str:
+US_ZIP_RE = re.compile(r"\b[A-Z]{2}\s+(\d{5})(?:-\d{4})?\b")
+
+
+def extract_postcode(address: str | None, country: str = "GB") -> str:
+    """UK postcode ("RH10 1AA") or, for US addresses, the 5-digit ZIP after the state code."""
     if not address:
         return ""
+    if country == "US":
+        zips = US_ZIP_RE.findall(address.upper())
+        return zips[-1] if zips else ""
     found = POSTCODE_RE.findall(address.upper())
     if not found:
         return ""

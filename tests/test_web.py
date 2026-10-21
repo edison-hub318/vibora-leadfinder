@@ -316,3 +316,27 @@ def test_search_from_ui(client):
             break
         time.sleep(0.05)
     assert "qualified" in p.text and "Start dialling" in p.text
+
+
+def test_campaigns_on_outreach_page(client, conn, settings):
+    from leadfinder import campaigns as camp
+
+    for i in range(2):
+        add_lead(conn, name=f"US HVAC {i}", trade="hvac", town="Austin, TX", country="US",
+                 phone=f"+1 512 555 010{i}", email=f"info{i}@ushvac{i}.com")
+    t = token(client)
+    h = {"X-CSRF-Token": t}
+    r = client.post("/campaigns", data={"name": "hvac-austin", "country": "US", "trade": "hvac",
+                                        "website": ["none", "poor"], "limit": "50"}, headers=h)
+    assert r.status_code == 200 and "hvac-austin" in r.text and "Drafted 2" in r.headers.get("HX-Trigger", "")
+    # Campaign drafts stay out of the one-off review queue.
+    assert "US HVAC 0" not in r.text.split("Review queue")[1].split("Approved, waiting")[0]
+    cid = camp.get(conn, "hvac-austin")["id"]
+    r = client.post(f"/campaigns/{cid}/approve", headers=h)
+    assert r.status_code == 200 and camp.stats(conn, cid)["queued"] == 2
+    r = client.post(f"/campaigns/{cid}/pause", headers=h)
+    assert camp.stats(conn, cid)["queued"] == 0 and camp.stats(conn, cid)["pending"] == 2
+    r = client.post("/campaigns", data={"name": "hvac-austin", "country": "US"}, headers=h)
+    assert "already exists" in r.headers.get("HX-Trigger", "")
+    assert client.post(f"/campaigns/{cid}/nope", headers=h).status_code == 404
+    assert client.post("/campaigns", data={"name": "x"}).status_code in (400, 403)  # CSRF still enforced

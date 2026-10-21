@@ -1,7 +1,8 @@
-"""Cold email: drafting from a template, review, and sending under UK PECR rules.
+"""Cold email: drafting from a template, review, and sending under UK PECR / US CAN-SPAM rules.
 
-Hard rules (enforced in `check_send_rules`, used by both the CLI and the dashboard):
-  * only limited companies (sole traders/partnerships need prior consent under PECR)
+Hard rules (enforced in `block_reason_for`, used by the CLI, the dashboard and campaigns):
+  * UK leads: only limited companies (sole traders/partnerships need prior consent under PECR)
+  * US leads: any business, but the footer must carry a real postal address (CAN-SPAM)
   * never more than the daily send limit, counted from the database
   * never to a suppressed address
   * never a second email to the same lead except one follow-up drafted with `followup`
@@ -14,7 +15,7 @@ import re
 import sqlite3
 import time
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import date, timedelta
 from email.message import EmailMessage
 from email.utils import formataddr, make_msgid
 from typing import Any, Callable
@@ -166,10 +167,14 @@ def render(template: str, lead: dict[str, Any], settings: Settings) -> Rendered:
 # Drafting
 # ---------------------------------------------------------------------------
 
-def _create_draft(conn: sqlite3.Connection, lead: dict[str, Any], r: Rendered, kind: str, user_id: int | None) -> int:
+def _create_draft(
+    conn: sqlite3.Connection, lead: dict[str, Any], r: Rendered, kind: str, user_id: int | None,
+    campaign_id: int | None = None,
+) -> int:
     cur = conn.execute(
-        "INSERT INTO emails(lead_id, kind, to_email, subject, body, status, created_by, created_at) VALUES (?,?,?,?,?,?,?,?)",
-        (lead["id"], kind, lead["email"], r.subject, r.body, "pending_review", user_id, now_db()),
+        "INSERT INTO emails(lead_id, kind, to_email, subject, body, status, created_by, created_at, campaign_id) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
+        (lead["id"], kind, lead["email"], r.subject, r.body, "pending_review", user_id, now_db(), campaign_id),
     )
     db.commit(conn)
     log_activity(conn, user_id, "email_draft", f"Drafted {'follow-up' if kind == 'followup' else 'cold'} email", lead["id"], "Draft")
@@ -209,18 +214,28 @@ def draft(conn: sqlite3.Connection, settings: Settings, user_id: int | None, lim
     return rep
 
 
-def followup(conn: sqlite3.Connection, settings: Settings, user_id: int | None, limit: int = 20) -> DraftReport:
-    """Draft ONE follow-up for leads whose first email went 5+ days ago with no reply."""
+def followup(
+    conn: sqlite3.Connection,
+    settings: Settings,
+    user_id: int | None,
+    limit: int = 20,
+    campaign_id: int | None = None,
+    template: str | None = None,
+) -> DraftReport:
+    """Draft ONE follow-up for leads whose first email went 5+ days ago with no reply.
+    With campaign_id, only that campaign's leads (and the follow-up joins the campaign)."""
     rep = DraftReport()
-    template = load_template(settings, "followup")
+    template = template if template is not None else load_template(settings, "followup")
     cutoff = to_db(now_utc() - timedelta(days=FOLLOWUP_DAYS))
+    camp_sql = "AND e.campaign_id = ?" if campaign_id is not None else ""
+    camp_args: tuple[Any, ...] = (campaign_id,) if campaign_id is not None else ()
     rows = conn.execute(
         f"""SELECT l.* FROM leads l JOIN emails e ON e.lead_id=l.id AND e.kind='initial' AND e.status='sent'
-            WHERE e.sent_at <= ? AND l.email_replied = 0
+            WHERE e.sent_at <= ? AND l.email_replied = 0 {camp_sql}
             AND l.status NOT IN ({','.join('?' * len(NO_EMAIL_STATUSES))})
             AND NOT EXISTS (SELECT 1 FROM emails f WHERE f.lead_id=l.id AND f.kind='followup' AND f.status != 'deleted')
             ORDER BY e.sent_at LIMIT ?""",
-        (cutoff, *NO_EMAIL_STATUSES, limit),
+        (cutoff, *camp_args, *NO_EMAIL_STATUSES, limit),
     ).fetchall()
     for row in rows:
         lead = db.row_to_dict(row)
@@ -232,8 +247,29 @@ def followup(conn: sqlite3.Connection, settings: Settings, user_id: int | None, 
         if r.words > MAX_WORDS:
             rep.skipped.append((lead["name"], f"follow-up is {r.words} words; the limit is {MAX_WORDS}."))
             continue
-        rep.created.append(_create_draft(conn, lead, r, "followup", user_id))
+        rep.created.append(_create_draft(conn, lead, r, "followup", user_id, campaign_id))
     return rep
+
+
+def mark_bounced(conn: sqlite3.Connection, lead_id: int, user_id: int | None) -> str:
+    """The last email to this lead bounced: record it and suppress the address so it's never retried."""
+    lead = require_lead(conn, lead_id)
+    row = conn.execute(
+        "SELECT id, to_email FROM emails WHERE lead_id=? AND status='sent' ORDER BY sent_at DESC LIMIT 1", (lead_id,)
+    ).fetchone()
+    if row is None:
+        raise EmailError(f"Nothing has been sent to lead {lead_id} yet.")
+    conn.execute("UPDATE emails SET status='bounced', bounced_at=? WHERE id=?", (now_db(), row["id"]))
+    conn.execute(
+        "UPDATE emails SET status='blocked', error='Address bounced' WHERE lead_id=? AND status IN ('pending_review','approved')",
+        (lead_id,),
+    )
+    conn.execute("UPDATE leads SET email=NULL WHERE id=? AND lower(email)=lower(?)", (lead_id, row["to_email"]))
+    db.commit(conn)
+    if valid_email(row["to_email"]):
+        suppress(conn, row["to_email"], user_id, "Bounced")
+    log_activity(conn, user_id, "email_bounced", f"Email bounced: {row['to_email']}", lead["id"], "Bounced")
+    return str(row["to_email"])
 
 
 def mark_replied(conn: sqlite3.Connection, lead_id: int, user_id: int | None) -> None:
@@ -248,20 +284,23 @@ def mark_replied(conn: sqlite3.Connection, lead_id: int, user_id: int | None) ->
 # Review
 # ---------------------------------------------------------------------------
 
-def drafts(conn: sqlite3.Connection, status: str = "pending_review") -> list[dict[str, Any]]:
+def drafts(conn: sqlite3.Connection, status: str = "pending_review", settings: Settings | None = None,
+           include_campaigns: bool = False) -> list[dict[str, Any]]:
+    """One-off drafts by status. Campaign emails are left out (they're handled per campaign)."""
+    camp_sql = "" if include_campaigns else "AND e.campaign_id IS NULL"
     rows = conn.execute(
         """SELECT e.*, l.name, l.entity_type, l.trade, l.town, u.initials AS created_initials,
                   a.initials AS approved_initials, s.initials AS sent_initials
            FROM emails e JOIN leads l ON l.id=e.lead_id
            LEFT JOIN users u ON u.id=e.created_by LEFT JOIN users a ON a.id=e.approved_by
            LEFT JOIN users s ON s.id=e.sent_by
-           WHERE e.status=? ORDER BY e.id""",
+           WHERE e.status=? {camp_sql} ORDER BY e.id""".replace("{camp_sql}", camp_sql),
         (status,),
     ).fetchall()
     out = []
     for r in rows:
         d = dict(r)
-        d["block_reason"] = block_reason_for(conn, d)
+        d["block_reason"] = block_reason_for(conn, d, settings)
         out.append(d)
     return out
 
@@ -309,12 +348,30 @@ def delete(conn: sqlite3.Connection, email_id: int, user_id: int | None) -> None
 # Sending
 # ---------------------------------------------------------------------------
 
+WARMUP_FIRST_WEEK = 10
+WARMUP_WEEKLY_STEP = 10
+
+
+def warmup_cap(settings: Settings, today: date | None = None) -> int | None:
+    """While WARMUP_START is set: 10/day in week 1, +10 each week after. None = no warm-up."""
+    if not settings.warmup_start:
+        return None
+    try:
+        start = date.fromisoformat(settings.warmup_start)
+    except ValueError:
+        return None
+    days = ((today or today_london()) - start).days
+    return WARMUP_FIRST_WEEK + WARMUP_WEEKLY_STEP * max(0, days // 7)
+
+
 def daily_limit(conn: sqlite3.Connection, settings: Settings) -> int:
     v = db.get_setting(conn, "daily_send_limit")
     try:
-        return int(v) if v not in (None, "") else settings.daily_send_limit
+        limit = int(v) if v not in (None, "") else settings.daily_send_limit
     except (TypeError, ValueError):
-        return settings.daily_send_limit
+        limit = settings.daily_send_limit
+    cap = warmup_cap(settings)
+    return min(limit, cap) if cap is not None else limit
 
 
 def sent_today(conn: sqlite3.Connection) -> int:
@@ -324,14 +381,20 @@ def sent_today(conn: sqlite3.Connection) -> int:
     ).fetchone()[0])
 
 
-def block_reason_for(conn: sqlite3.Connection, e: dict[str, Any]) -> str | None:
+def block_reason_for(conn: sqlite3.Connection, e: dict[str, Any], settings: Settings | None = None) -> str | None:
     """Why this email may not be sent (None if it may). Shown in the UI and the CLI."""
     lead = require_lead(conn, e["lead_id"])
-    et = lead["entity_type"]
-    if et != "limited_company":
-        if et in ("sole_trader", "likely_sole_trader"):
-            return "Sole trader: email not allowed, call instead"
-        return "Company type unknown: confirm it's a limited company first (classify or set-type)"
+    country = (lead.get("country") or "GB").upper()
+    if country == "GB":
+        # PECR: unsolicited marketing email to sole traders and partnerships needs prior consent.
+        et = lead["entity_type"]
+        if et != "limited_company":
+            if et in ("sole_trader", "likely_sole_trader"):
+                return "Sole trader: email not allowed, call instead"
+            return "Company type unknown: confirm it's a limited company first (classify or set-type)"
+    elif settings is not None and not settings.business_address:
+        # CAN-SPAM: every commercial email must include the sender's valid physical postal address.
+        return "US email needs your postal address: set BUSINESS_ADDRESS in .env"
     if is_suppressed(conn, e["to_email"]) or is_suppressed(conn, lead["email"]):
         return "Address is on the suppression list"
     if lead["status"] in ("dnc",):
@@ -392,15 +455,21 @@ def send(
     sleep: Callable[[float], None] = time.sleep,
     rand: Callable[[float, float], float] = random.uniform,
     on_event: Callable[[str, dict[str, Any]], None] | None = None,
+    campaign_id: int | None = None,
 ) -> SendReport:
     emit = on_event or (lambda *_: None)
     rep = SendReport(limit=daily_limit(conn, settings), sent_before=sent_today(conn))
-    approved = conn.execute("SELECT * FROM emails WHERE status='approved' ORDER BY id").fetchall()
+    if campaign_id is None:  # one-off emails only; campaigns are sent with `campaign send`
+        approved = conn.execute("SELECT * FROM emails WHERE status='approved' AND campaign_id IS NULL ORDER BY id").fetchall()
+    else:
+        approved = conn.execute(
+            "SELECT * FROM emails WHERE status='approved' AND campaign_id=? ORDER BY id", (campaign_id,)
+        ).fetchall()
     count_today = rep.sent_before
     first = True
     for row in approved:
         e = dict(row)
-        reason = block_reason_for(conn, e)
+        reason = block_reason_for(conn, e, settings)
         if reason:
             rep.skipped.append((e, reason))
             continue
@@ -436,7 +505,7 @@ def send(
 
 def sent_emails(conn: sqlite3.Connection, limit: int = 50) -> list[dict[str, Any]]:
     return [dict(r) for r in conn.execute(
-        """SELECT e.*, l.name, u.initials AS sent_initials FROM emails e JOIN leads l ON l.id=e.lead_id
+        """SELECT e.*, l.name, l.email_replied AS replied, u.initials AS sent_initials FROM emails e JOIN leads l ON l.id=e.lead_id
            LEFT JOIN users u ON u.id=e.sent_by WHERE e.status='sent' ORDER BY e.sent_at DESC LIMIT ?""",
         (limit,),
     ).fetchall()]

@@ -4,13 +4,52 @@
   <div class="card kpi"><div class="label">Sent today</div><div class="value">{{ sent_today }}<span class="muted" style="font-size:16px"> / {{ limit }}</span></div>
     <div class="meter {% if sent_today >= limit %}red{% elif sent_today >= limit * 0.7 %}amber{% endif %}"><div class="bar"><i style="width:{{ [100 * sent_today / (limit or 1), 100]|min }}%"></i></div></div></div>
   <div class="card kpi"><div class="label">Awaiting review</div><div class="value">{{ pending|length }}</div><div class="sub">approved {{ approved|length }}</div></div>
-  <div class="card"><div class="label" style="margin-bottom:8px">The rules (UK PECR)</div>
-    <div class="small muted">Limited companies only (sole traders and partnerships need prior consent). Max {{ limit }} a day, 60-180s apart, one recipient, plain text, opt-out footer and List-Unsubscribe. Never to suppressed addresses; one follow-up at most.</div>
-    {% if not smtp_ok %}<div class="small amber" style="margin-top:8px">SMTP isn't set up in .env yet, so nothing can be sent.</div>{% endif %}</div>
+  <div class="card"><div class="label" style="margin-bottom:8px">The rules</div>
+    <div class="small muted"><b>UK (PECR):</b> limited companies only; sole traders and partnerships need prior consent. <b>US (CAN-SPAM):</b> any business, with your postal address and an opt-out in every email. Both: max {{ limit }} a day, 60-180s apart, one recipient, plain text, never to suppressed addresses, one follow-up at most.</div>
+    {% if not smtp_ok %}<div class="small amber" style="margin-top:8px">SMTP isn't set up in .env yet, so nothing can be sent.</div>{% endif %}
+    {% if not address_ok %}<div class="small amber" style="margin-top:4px">Set BUSINESS_ADDRESS in .env: US email can't go without it.</div>{% endif %}</div>
+</section>
+
+<section class="card" id="campaigns">
+  <div class="card-head"><h3>Campaigns</h3><span class="label">One template · a whole segment · sent in daily batches</span></div>
+  <details style="margin-bottom:14px"{% if not campaigns %} open{% endif %}>
+    <summary class="small" style="cursor:pointer;margin-bottom:10px"><b>New campaign</b></summary>
+    <form hx-post="/campaigns" hx-target="#outreach-body" class="stack">
+      <div class="grid g-3">
+        <label class="f">Name<input type="text" name="name" required placeholder="e.g. hvac-austin-oct"></label>
+        <label class="f">Country<select name="country"><option value="GB">UK</option><option value="US">USA</option></select></label>
+        <label class="f">Trade<select name="trade"><option value="">All trades</option>{% for t in campaign_trades %}<option value="{{ t }}">{{ t|trade_label }}</option>{% endfor %}</select></label>
+        <label class="f">Town (blank = all)<input type="text" name="town" placeholder="e.g. Austin, TX"></label>
+        <label class="f">Min score<input type="number" name="min_score" value="0" min="0" max="100"></label>
+        <label class="f">Max drafts now<input type="number" name="limit" value="200" min="1" max="1000"></label>
+      </div>
+      <div class="row" style="flex-wrap:wrap;gap:12px"><span class="small muted">Websites:</span>{% for w in website_statuses %}
+        <label class="check small"><input type="checkbox" name="website" value="{{ w }}" {% if w in default_website %}checked{% endif %}> {{ w|replace('_', ' ') }}</label>{% endfor %}</div>
+      <div class="small dim">Uses templates/cold_email.txt (UK) or templates/cold_email_us.txt (US). Drafts are checked against the rules; nothing sends until you approve.</div>
+      <button class="btn btn-primary btn-sm" style="align-self:flex-start">Draft campaign</button>
+    </form>
+  </details>
+  {% if campaigns %}<div class="table-wrap"><table><thead><tr><th style="min-width:200px">Campaign</th><th class="n">To approve</th><th class="n">Queued</th><th class="n">Sent</th><th class="n">Replies</th><th class="n">Meetings</th><th>Per 100 delivered</th><th></th></tr></thead><tbody>
+  {% for c in campaigns %}{% set st = c.stats %}
+    <tr><td><b>{{ c.name }}</b> <span class="chip plain">{{ c.status }}</span><div class="small muted">{{ c.filters.describe()|replace('_', ' ') }}</div>
+      {% if st.sent >= 20 and st.bounce_rate > 2 %}<div class="small amber">Bounce rate {{ st.bounce_rate }}%: check the addresses before sending more</div>{% endif %}</td>
+    <td class="n">{{ st.pending }}</td><td class="n">{{ st.queued }}</td><td class="n">{{ st.sent }}{% if st.bounced %}<div class="small dim">{{ st.bounced }} bounced</div>{% endif %}</td>
+    <td class="n">{{ st.replied }}</td><td class="n">{{ st.meetings }}</td>
+    <td class="small">{% if st.delivered %}{{ st.meeting_rate }} meetings · {{ st.reply_rate }}% replies<div class="{{ 'green' if st.meeting_band in ('good', 'great') else 'amber' if st.meeting_band == 'below average' else 'muted' }}">{{ st.meeting_band }}{% if st.delivered < 100 %} (early){% endif %}</div>{% else %}<span class="dim">-</span>{% endif %}</td>
+    <td><div class="row" style="flex-wrap:wrap;gap:6px;justify-content:flex-end">
+      {% if st.pending %}<button class="btn btn-primary btn-sm" hx-post="/campaigns/{{ c.id }}/approve" hx-target="#outreach-body" hx-confirm="Approve all {{ st.pending }} sendable draft(s) in {{ c.name }}?">Approve all</button>{% endif %}
+      {% if st.queued %}<button class="btn btn-secondary btn-sm" hx-post="/campaigns/{{ c.id }}/send" hx-target="#outreach-body" hx-confirm="Send today's batch for {{ c.name }}?">Send today's batch</button>
+        <button class="btn btn-ghost btn-sm" hx-post="/campaigns/{{ c.id }}/pause" hx-target="#outreach-body">Pause</button>{% endif %}
+      <button class="btn btn-ghost btn-sm" hx-post="/campaigns/{{ c.id }}/add" hx-target="#outreach-body" title="Draft emails for new leads that match">Top up</button>
+      {% if st.sent %}<button class="btn btn-ghost btn-sm" hx-post="/campaigns/{{ c.id }}/followup" hx-target="#outreach-body" title="One follow-up, 5+ days after the first email, if no reply">Follow-ups</button>{% endif %}
+    </div></td></tr>
+  {% endfor %}</tbody></table></div>
+  <div class="small dim" style="margin-top:8px">2026 benchmarks per 100 delivered: meetings 0.3-1 average, 1-2 good, 2+ great; replies 1.5-3% average, 3-5% good. Use Replied and Bounced on the Sent list below so these stay accurate.</div>
+  {% else %}<p class="muted small">No campaigns yet.</p>{% endif %}
 </section>
 
 <section class="card">
-  <div class="card-head"><h3>Review queue</h3><span class="label">Approve · edit · skip · delete</span></div>
+  <div class="card-head"><h3>Review queue</h3><span class="label">One-off emails · approve · edit · skip · delete</span></div>
   {% if pending %}<div class="stack" style="gap:14px">{% for e in pending %}
     <div class="card" style="background:var(--bg)">
       <div class="row between"><div><b>{{ e.name }}</b> <span class="small muted">→ {{ e.to_email }} · {{ e.kind }}</span></div><span>{{ initials(e.created_initials) }}</span></div>
@@ -42,7 +81,9 @@
 <section class="grid g-2">
   <div class="card">
     <div class="card-head"><h3>Sent</h3></div>
-    {% if sent %}<table><tbody>{% for e in sent %}<tr><td><b>{{ e.name }}</b><div class="small muted">{{ e.to_email }} · {{ e.kind }}</div></td><td class="small muted">{{ e.sent_at|when }}</td><td>{{ initials(e.sent_initials) }}</td></tr>{% endfor %}</tbody></table>
+    {% if sent %}<table><tbody>{% for e in sent %}<tr><td><b>{{ e.name }}</b><div class="small muted">{{ e.to_email }} · {{ e.kind }}{% if e.replied %} · <span class="green">replied</span>{% endif %}</div></td><td class="small muted">{{ e.sent_at|when }}</td><td>{{ initials(e.sent_initials) }}</td>
+      <td><div class="row" style="gap:4px;justify-content:flex-end">{% if not e.replied %}<button class="btn btn-ghost btn-sm" hx-post="/outreach/lead/{{ e.lead_id }}/replied" hx-target="#outreach-body">Replied</button>{% endif %}
+      <button class="btn btn-ghost btn-sm" hx-post="/outreach/lead/{{ e.lead_id }}/bounced" hx-target="#outreach-body" hx-confirm="Mark {{ e.to_email }} as bounced? It will be suppressed.">Bounced</button></div></td></tr>{% endfor %}</tbody></table>
     {% else %}<p class="muted small">No emails sent yet.</p>{% endif %}
   </div>
   <div class="card">

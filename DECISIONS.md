@@ -147,6 +147,33 @@ These are the choices I made where the brief left room, so you can check or chan
   doesn't hang.
 - SMTP: port 465 uses SSL; any other port uses STARTTLS.
 
+## Campaigns and US support (added Oct 2026)
+
+- **Country** is stored per search and per lead (`GB` default, `US`). Old databases get the new
+  columns automatically on first run (`db.migrate`), so no manual upgrade step.
+- **US phone numbers** are stored as `+1 512 555 0142`, so every phone helper recognises them from
+  the number alone. They have type `us` (no reliable mobile/landline split), so the "mobile means
+  sole trader" rule only applies to UK numbers.
+- **US town cache keys** are prefixed `us:` so "Manchester" (UK) and "Manchester, NH" never collide.
+  US searches only widen to US towns already searched; `towns.yaml` is UK-only.
+- **Send rules by country:** UK = PECR (limited companies only). US = CAN-SPAM: no company-type
+  check, but no US email goes without `BUSINESS_ADDRESS`. The opt-out footer and List-Unsubscribe
+  header apply everywhere.
+- **Campaigns** save their filter, so `campaign add` re-runs it for new leads. Approving a campaign
+  approves every draft that passes `block_reason_for`; blocked ones stay pending with their reason.
+  Campaign email is kept out of the one-off `review`/`send` queue and the dashboard's one-off review
+  list, so a 200-lead campaign can't flood it or be sent by the wrong button.
+- **Daily limit** is still one shared number for all sending (campaigns and one-off). Warm-up
+  (`WARMUP_START`) caps it at 10 + 10 per full week since that date.
+- **Campaign stats** are per 100 first emails *delivered* (sent minus bounced). A meeting counts if
+  a campaign lead got a meeting row, or moved to meeting/proposal/won, after its first campaign
+  email. If you were also calling that lead, the email still gets the credit. Benchmark bands come
+  from 2026 published benchmarks (meetings 0.3-1 per 100 average, 1-2 good, 2+ great; replies
+  1.5-3% average, 3-5% good) and live in `campaigns.py`.
+- **Preview templates were missing from the repo:** the `.gitignore` line `previews/` also matched
+  `templates/previews/`, so they were never committed. It's now `/previews/` (root only), and the
+  templates were rebuilt as one shared `_base.html.j2` that each family file extends.
+
 ## Dashboard
 
 - Session cookie = signed with `SECRET_KEY` (itsdangerous). Expiry (12 h, or 30 days with "Keep me

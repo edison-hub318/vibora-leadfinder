@@ -199,6 +199,20 @@ CREATE TABLE IF NOT EXISTS emails (
 );
 CREATE INDEX IF NOT EXISTS idx_emails_lead ON emails(lead_id);
 
+CREATE TABLE IF NOT EXISTS campaigns (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    country TEXT NOT NULL DEFAULT 'GB',
+    filters_json TEXT NOT NULL DEFAULT '{}',
+    template TEXT NOT NULL,
+    followup_template TEXT,
+    status TEXT NOT NULL DEFAULT 'draft',
+    created_by INTEGER REFERENCES users(id),
+    created_at TEXT NOT NULL,
+    approved_by INTEGER REFERENCES users(id),
+    approved_at TEXT
+);
+
 CREATE TABLE IF NOT EXISTS suppression (
     email TEXT PRIMARY KEY,
     reason TEXT,
@@ -282,6 +296,25 @@ def commit(conn: sqlite3.Connection) -> None:
         conn.commit()
 
 
+# Columns added after the first release. `connect` adds any that an older leads.db is missing,
+# so upgrading never needs a manual step.
+MIGRATIONS: list[tuple[str, str, str]] = [
+    ("leads", "country", "TEXT NOT NULL DEFAULT 'GB'"),
+    ("searches", "country", "TEXT NOT NULL DEFAULT 'GB'"),
+    ("emails", "campaign_id", "INTEGER REFERENCES campaigns(id)"),
+    ("emails", "bounced_at", "TEXT"),
+]
+
+
+def migrate(conn: sqlite3.Connection) -> None:
+    for table, column, decl in MIGRATIONS:
+        cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        if column not in cols:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_emails_campaign ON emails(campaign_id)")
+    conn.commit()
+
+
 def connect(path: Path | str, init: bool = True) -> sqlite3.Connection:
     """Open the database (creating the schema if needed, unless init=False)."""
     if str(path) != ":memory:":
@@ -294,6 +327,7 @@ def connect(path: Path | str, init: bool = True) -> sqlite3.Connection:
         conn.execute("PRAGMA journal_mode = WAL")
     if init:
         conn.executescript(SCHEMA)
+        migrate(conn)
     return conn
 
 

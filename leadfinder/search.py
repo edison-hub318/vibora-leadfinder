@@ -30,7 +30,7 @@ from .freetier import TEXT_SEARCH, TEXT_SEARCH_PRO, AllowanceReached, UsageGuard
 from .scoring import score_lead
 from .timeutil import from_db, now_db, now_utc, to_db
 from .trades import ChainMatcher, Trade, name_key, normalise_text, resolve_trade, trade_matches
-from .users import User, log_activity
+from .users import User
 
 CLOSED_STATUSES = ("won", "lost", "not_interested", "wrong_number", "dnc")
 PAGES_PER_QUERY = 3  # Google returns at most 60 results (3 x 20) per query
@@ -59,6 +59,7 @@ class SearchOptions:
     audit: bool = True
     force: bool = False
     request_cap: int | None = None
+    country: str = "GB"  # GB or US
 
 
 @dataclass
@@ -102,6 +103,21 @@ class SearchReport:
 # Geometry and geocoding
 # ---------------------------------------------------------------------------
 
+# Countries the search supports: what to append to queries, and Google's region code.
+COUNTRIES: dict[str, dict[str, str]] = {
+    "GB": {"label": "UK", "suffix": "UK", "region": "GB"},
+    "US": {"label": "USA", "suffix": "USA", "region": "US"},
+}
+
+
+def norm_country(country: str | None) -> str:
+    c = (country or "GB").strip().upper()
+    c = {"UK": "GB", "USA": "US", "UNITED STATES": "US", "UNITED KINGDOM": "GB"}.get(c, c)
+    if c not in COUNTRIES:
+        raise SearchError(f"Country '{country}' isn't supported. Use GB (UK) or US.")
+    return c
+
+
 def haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     r = 6371.0
     p1, p2 = math.radians(lat1), math.radians(lat2)
@@ -110,8 +126,10 @@ def haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     return 2 * r * math.asin(math.sqrt(a))
 
 
-def town_key(town: str) -> str:
-    return normalise_text(town)
+def town_key(town: str, country: str = "GB") -> str:
+    # US towns get a prefix so "Manchester" (UK) and "Manchester, NH" never share a cache row.
+    key = normalise_text(town)
+    return key if norm_country(country) == "GB" else f"{country.lower()}:{key}"
 
 
 def tidy_town(town: str) -> str:
@@ -130,15 +148,17 @@ def geocode_town(
     town: str,
     user_id: int | None,
     search_id: int | None,
+    country: str = "GB",
 ) -> dict[str, Any]:
     """Coordinates for a town (cached forever). Costs at most one request per new town."""
-    key = town_key(town)
+    country = norm_country(country)
+    key = town_key(town, country)
     row = conn.execute("SELECT * FROM towns WHERE name_key=?", (key,)).fetchone()
     if row is not None:
         if row["not_found"]:
             raise TownNotFound(f"Google couldn't find '{town}'. Check the spelling, or try a nearby town or postcode district.")
         return dict(row)
-    for t in load_towns(settings):
+    for t in (load_towns(settings) if country == "GB" else []):
         if town_key(t["name"]) == key and t.get("lat") is not None:
             conn.execute(
                 "INSERT INTO towns(name_key, display_name, lat, lng, formatted_address, created_at) VALUES (?,?,?,?,?,?)",
@@ -147,7 +167,8 @@ def geocode_town(
             db.commit(conn)
             return dict(conn.execute("SELECT * FROM towns WHERE name_key=?", (key,)).fetchone())
     guard.check(TEXT_SEARCH_PRO)
-    body = {"textQuery": f"{town}, UK", "regionCode": "GB", "pageSize": 1}
+    cinfo = COUNTRIES[country]
+    body = {"textQuery": f"{town}, {cinfo['suffix']}", "regionCode": cinfo["region"], "pageSize": 1}
     resp = clients.places.text_search(body, GEOCODE_FIELD_MASK)
     guard.record(TEXT_SEARCH_PRO, user_id, search_id)
     places = resp.get("places") or []
@@ -167,17 +188,23 @@ def geocode_town(
     return dict(conn.execute("SELECT * FROM towns WHERE name_key=?", (key,)).fetchone())
 
 
-def nearby_areas(conn: sqlite3.Connection, settings: Settings, centre: dict[str, Any], radius_km: float) -> list[dict[str, Any]]:
-    """Other towns/postcode districts within the radius (from towns.yaml and the cache)."""
+def nearby_areas(
+    conn: sqlite3.Connection, settings: Settings, centre: dict[str, Any], radius_km: float, country: str = "GB"
+) -> list[dict[str, Any]]:
+    """Other towns/postcode districts within the radius (from towns.yaml and the cache, same country)."""
+    country = norm_country(country)
     seen = {centre["name_key"]}
     out = []
     candidates = [
-        {"name": t["name"], "lat": t["lat"], "lng": t["lng"]} for t in load_towns(settings) if t.get("lat") is not None
+        {"name": t["name"], "lat": t["lat"], "lng": t["lng"]}
+        for t in (load_towns(settings) if country == "GB" else []) if t.get("lat") is not None
     ]
-    for r in conn.execute("SELECT display_name, lat, lng FROM towns WHERE not_found=0").fetchall():
-        candidates.append({"name": r["display_name"], "lat": r["lat"], "lng": r["lng"]})
+    for r in conn.execute("SELECT name_key, display_name, lat, lng FROM towns WHERE not_found=0").fetchall():
+        is_gb = ":" not in r["name_key"]
+        if (country == "GB") == is_gb and (is_gb or r["name_key"].startswith(country.lower() + ":")):
+            candidates.append({"name": r["display_name"], "lat": r["lat"], "lng": r["lng"]})
     for c in candidates:
-        k = town_key(c["name"])
+        k = town_key(c["name"], country)
         if k in seen:
             continue
         d = haversine_km(centre["lat"], centre["lng"], float(c["lat"]), float(c["lng"]))
@@ -191,19 +218,19 @@ def nearby_areas(conn: sqlite3.Connection, settings: Settings, centre: dict[str,
 # Repeat-search warning and planning
 # ---------------------------------------------------------------------------
 
-def recent_search(conn: sqlite3.Connection, trade_key: str, town: str) -> dict[str, Any] | None:
+def recent_search(conn: sqlite3.Connection, trade_key: str, town: str, country: str = "GB") -> dict[str, Any] | None:
     since = to_db(now_utc() - timedelta(days=REPEAT_DAYS))
     row = conn.execute(
         """SELECT s.*, u.full_name FROM searches s LEFT JOIN users u ON u.id = s.user_id
            WHERE lower(s.trade)=lower(?) AND lower(s.town)=lower(?) AND s.created_at >= ? AND s.status='done'
-           ORDER BY s.id DESC LIMIT 1""",
-        (trade_key, tidy_town(town), since),
+           AND COALESCE(s.country,'GB')=? ORDER BY s.id DESC LIMIT 1""",
+        (trade_key, tidy_town(town), since, norm_country(country)),
     ).fetchone()
     return dict(row) if row else None
 
 
-def repeat_warning(conn: sqlite3.Connection, trade: Trade, town: str) -> str | None:
-    prev = recent_search(conn, trade.key, town)
+def repeat_warning(conn: sqlite3.Connection, trade: Trade, town: str, country: str = "GB") -> str | None:
+    prev = recent_search(conn, trade.key, town, country)
     if not prev:
         return None
     days = max(0, (now_utc() - from_db(prev["created_at"])).days)  # type: ignore[operator]
@@ -217,8 +244,10 @@ def repeat_warning(conn: sqlite3.Connection, trade: Trade, town: str) -> str | N
     )
 
 
-def planned_requests(conn: sqlite3.Connection, guard: UsageGuard, town: str, n: int, cap: int | None = None) -> dict[str, int]:
-    cached = conn.execute("SELECT 1 FROM towns WHERE name_key=?", (town_key(town),)).fetchone() is not None
+def planned_requests(
+    conn: sqlite3.Connection, guard: UsageGuard, town: str, n: int, cap: int | None = None, country: str = "GB"
+) -> dict[str, int]:
+    cached = conn.execute("SELECT 1 FROM towns WHERE name_key=?", (town_key(town, country),)).fetchone() is not None
     cap = cap or guard.per_search_cap
     # Roughly a third of raw results survive the filters, 20 results per request.
     est = max(1, min(cap, math.ceil(n / 7)))
@@ -229,10 +258,12 @@ def planned_requests(conn: sqlite3.Connection, guard: UsageGuard, town: str, n: 
 # Place -> lead
 # ---------------------------------------------------------------------------
 
-def place_to_lead(place: dict[str, Any], trade: Trade, town: str) -> dict[str, Any]:
+def place_to_lead(place: dict[str, Any], trade: Trade, town: str, country: str = "GB") -> dict[str, Any]:
     loc = place.get("location") or {}
     phone = place.get("nationalPhoneNumber") or ""
-    info = phones.classify(phone)
+    if country == "US" and phone:
+        phone = phones.us_storage(phone) or phone
+    info = phones.classify(phone, country)
     return {
         "_key": place["id"],
         "place_id": place["id"],
@@ -240,7 +271,8 @@ def place_to_lead(place: dict[str, Any], trade: Trade, town: str) -> dict[str, A
         "trade": trade.key,
         "town": tidy_town(town),
         "address": place.get("formattedAddress") or "",
-        "postcode": extract_postcode(place.get("formattedAddress")),
+        "postcode": extract_postcode(place.get("formattedAddress"), country),
+        "country": country,
         "phone": phone,
         "phone_e164": info.e164 or None,
         "phone_type": info.kind,
@@ -478,11 +510,13 @@ def run_search(
     emit = progress or (lambda *_: None)
     trade = resolve_trade(settings, opts.trade)
     town = tidy_town(opts.town)
+    country = norm_country(opts.country)
+    cinfo = COUNTRIES[country]
     uid = user.id if user else None
     n_wanted = max(1, int(opts.max_leads))
 
     if not opts.force:
-        warning = repeat_warning(conn, trade, town)
+        warning = repeat_warning(conn, trade, town, country)
         if warning:
             raise RepeatSearch(warning + " Use --force to search again.")
 
@@ -492,8 +526,8 @@ def run_search(
     cap = opts.request_cap or guard.per_search_cap
 
     cur = conn.execute(
-        "INSERT INTO searches(user_id, trade, town, radius_km, requested, created_at) VALUES (?,?,?,?,?,?)",
-        (uid, trade.key, town, opts.radius_km, n_wanted, now_db()),
+        "INSERT INTO searches(user_id, trade, town, radius_km, requested, country, created_at) VALUES (?,?,?,?,?,?,?)",
+        (uid, trade.key, town, opts.radius_km, n_wanted, country, now_db()),
     )
     search_id = int(cur.lastrowid)
     db.commit(conn)
@@ -508,7 +542,7 @@ def run_search(
 
     # Step 1: lock to the area.
     try:
-        centre = geocode_town(conn, settings, clients, guard, town, uid, search_id)
+        centre = geocode_town(conn, settings, clients, guard, town, uid, search_id, country)
     except TownNotFound as e:
         finish_failed("town_not_found", str(e))
         raise
@@ -526,7 +560,7 @@ def run_search(
     plan: list[QueryPlan] = [QueryPlan(trade.query_text, town, centre["lat"], centre["lng"])]
     for s in trade.synonyms:
         plan.append(QueryPlan(s, town, centre["lat"], centre["lng"]))
-    for area in nearby_areas(conn, settings, centre, opts.radius_km):
+    for area in nearby_areas(conn, settings, centre, opts.radius_km, country):
         plan.append(QueryPlan(trade.query_text, area["name"], float(area["lat"]), float(area["lng"])))
 
     idx = _load_index(conn, rules)
@@ -540,13 +574,13 @@ def run_search(
     stop_message = ""
     result = qualify([], [], town, idx, chains, rules, uid, opts.include_no_phone)
 
-    emit("plan", {"planned": planned_requests(conn, guard, town, n_wanted, cap), "queries": len(plan)})
+    emit("plan", {"planned": planned_requests(conn, guard, town, n_wanted, cap, country), "queries": len(plan)})
 
     for q in plan:
         if stop_reason:
             break
         page_token = None
-        query_text = f"{q.text} in {q.area}, UK"
+        query_text = f"{q.text} in {q.area}, {cinfo['suffix']}"
         for page in range(PAGES_PER_QUERY):
             if len(result.qualified) >= n_wanted:
                 stop_reason = "enough"
@@ -563,7 +597,7 @@ def run_search(
                 break
             body: dict[str, Any] = {
                 "textQuery": query_text,
-                "regionCode": "GB",
+                "regionCode": cinfo["region"],
                 "pageSize": 20,
                 "locationBias": {"circle": {"center": {"latitude": q.lat, "longitude": q.lng}, "radius": radius_m}},
             }
@@ -586,7 +620,7 @@ def run_search(
                 if not pid or pid in seen:
                     continue
                 seen.add(pid)
-                cand = place_to_lead(place, trade, town)
+                cand = place_to_lead(place, trade, town, country)
                 all_raw.append(cand)
                 if cand["business_status"] != "OPERATIONAL":
                     closed += 1
@@ -652,7 +686,7 @@ def run_search(
                 if email:
                     c["email"], c["email_source"] = email, source
             emit("enrich", {"done": i + 1, "total": len(qualified)})
-    if clients.companies_house is not None:
+    if clients.companies_house is not None and country == "GB":  # Companies House is UK-only
         for c in qualified:
             etype, number = classify_lead(c, clients)
             if etype == "unknown" and c.get("phone_type") == "mobile":
@@ -740,6 +774,7 @@ LEAD_COLUMNS = (
     "website_status", "website_issues", "audit_json", "pagespeed_score", "audited_at", "existing_agency",
     "ai_dated_score", "ai_verdict", "ai_biggest_problem", "hook", "quality_flags", "entity_type", "entity_source",
     "company_number", "email", "email_source", "score", "owner_id", "duplicate_of", "blocked_reason", "search_id",
+    "country",
 )
 
 
@@ -826,7 +861,8 @@ def refresh_leads(
             rep.failed += 1
             continue
         guard.record(PLACE_DETAILS, uid, None)
-        fresh = place_to_lead(place, Trade(key=lead["trade"] or "", label=lead["trade"] or ""), lead["town"] or "")
+        fresh = place_to_lead(place, Trade(key=lead["trade"] or "", label=lead["trade"] or ""), lead["town"] or "",
+                              lead.get("country") or "GB")
         merged = {**lead, **{k: fresh[k] for k in GOOGLE_FIELDS}}
         merged["hook"] = make_hook(merged)
         merged["score"] = score_lead(merged)

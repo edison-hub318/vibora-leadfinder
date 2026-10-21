@@ -111,3 +111,33 @@ def test_wrong_password_message(app_env):
 def test_ui_refuses_without_users(app_env):
     r = invoke("ui", "--no-browser")
     assert r.exit_code == 1 and "user add" in r.output and "Edison Young" in r.output
+
+
+def test_campaign_commands(app_env):
+    invoke("user", "add", "Edison Young", input=f"{TEST_PASSWORD}\n{TEST_PASSWORD}\n")
+    invoke("login", "Edison Young", input=f"{TEST_PASSWORD}\n")
+    assert invoke("search", "plumbers", "--town", "Crawley", "--max", "3", "--no-audit").exit_code == 0
+    assert invoke("add-email", "1", "office@example-plumbing.co.uk").exit_code == 0
+    assert invoke("set-type", "1", "limited_company").exit_code == 0
+
+    r = invoke("campaign", "create", "crawley-plumbers", "--trade", "plumbers", "--website",
+               "none,social_only,free_builder,poor,unchecked")
+    assert r.exit_code == 0, r.output
+    assert "Drafted 1 email" in r.output and "Sample 1 of 1" in r.output and "campaign approve" in r.output
+
+    r = invoke("campaign", "approve", "crawley-plumbers", input="y\n")
+    assert r.exit_code == 0 and "Approved 1" in r.output, r.output
+
+    r = invoke("campaign", "send", "crawley-plumbers", "--dry-run")
+    assert r.exit_code == 0 and "1 email(s) would go today" in r.output
+
+    r = invoke("campaign", "send", "crawley-plumbers")
+    assert r.exit_code == 0 and "Sent 1" in r.output, r.output
+    assert invoke("bounced", "1").exit_code == 0
+
+    r = invoke("campaign", "stats", "crawley-plumbers")
+    assert r.exit_code == 0 and "Bounced" in r.output and "2026 benchmarks" in r.output
+    r = invoke("campaign", "list")
+    assert r.exit_code == 0 and "crawley-plumbers" in r.output
+    assert invoke("campaign", "stats", "nope").exit_code == 1
+    assert invoke("search", "hvac", "--town", "Paris", "--country", "FR").exit_code == 1

@@ -340,3 +340,11 @@ def test_campaigns_on_outreach_page(client, conn, settings):
     assert "already exists" in r.headers.get("HX-Trigger", "")
     assert client.post(f"/campaigns/{cid}/nope", headers=h).status_code == 404
     assert client.post("/campaigns", data={"name": "x"}).status_code in (400, 403)  # CSRF still enforced
+
+
+def test_us_lead_panel_has_no_uk_company_rule(client, conn):
+    lid = add_lead(conn, name="Austin Air", country="US", phone="+1 512 555 0199", town="Austin")
+    html = client.get(f"/leads/{lid}/panel").text
+    assert "Company type unknown" not in html and "Mark limited company" not in html
+    uk = add_lead(conn, name="Crawley Co")
+    assert "Company type unknown" in client.get(f"/leads/{uk}/panel").text

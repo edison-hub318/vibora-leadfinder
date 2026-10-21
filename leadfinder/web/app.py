@@ -470,13 +470,17 @@ def create_app(settings: Settings, clients_factory: Callable[[Settings], Clients
         if not lead:
             raise HTTPException(404)
         email_block = None
-        if lead["entity_type"] != "limited_company":
+        is_us = (lead.get("country") or "GB") == "US"
+        if is_us:
+            if not settings.business_address:
+                email_block = "US email needs your postal address: set BUSINESS_ADDRESS in .env"
+        elif lead["entity_type"] != "limited_company":
             email_block = ("Sole trader: email not allowed, call instead" if "sole" in lead["entity_type"]
                            else "Company type unknown: email blocked until confirmed as a limited company")
         audit_signals = json.loads(lead["audit_json"]) if lead.get("audit_json") else {}
         return render(request, conn, "partials/lead_panel.html", partial=True, lead=lead,
                       history=leads_mod.call_history(conn, lead_id), timeline=leads_mod.lead_timeline(conn, lead_id),
-                      email_block=email_block, signals=audit_signals, all_users=users.list_users(conn),
+                      email_block=email_block, is_us=is_us, signals=audit_signals, all_users=users.list_users(conn),
                       is_dnc=leads_mod.is_dnc(conn, lead["phone"]))
 
     @app.post("/leads/{lead_id}/assign", response_class=HTMLResponse)

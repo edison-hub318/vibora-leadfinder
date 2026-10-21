@@ -20,10 +20,10 @@
     {% if lead.ai_verdict %}<dt>AI verdict</dt><dd>{{ lead.ai_verdict }} <span class="dim">({{ lead.ai_dated_score }}/10 dated; {{ lead.ai_biggest_problem }})</span></dd>{% endif %}
     {% if lead.existing_agency %}<dt>Agency</dt><dd class="amber">Footer credits {{ lead.existing_agency }}: may be in a contract or loyal</dd>{% endif %}
     {% if lead.quality_flags %}<dt>Flags</dt><dd>{% for f in lead.quality_flags %}{{ f|trade_label }}{% if not loop.last %}, {% endif %}{% endfor %}{% if 'possible_ghost' in lead.quality_flags %} (possibly inactive or a ghost listing){% endif %}</dd>{% endif %}
-    <dt>Company</dt><dd>{{ lead.entity_type|trade_label }}{% if lead.company_number %} · Co. no. {{ lead.company_number }}{% endif %}
+    {% if not is_us %}<dt>Company</dt><dd>{{ lead.entity_type|trade_label }}{% if lead.company_number %} · Co. no. {{ lead.company_number }}{% endif %}
       <form class="row" style="margin-top:6px" hx-post="/leads/{{ lead.id }}/type" hx-target="#side-panel-body">
         <button class="btn btn-ghost btn-sm" name="entity" value="limited_company">Mark limited company</button>
-        <button class="btn btn-ghost btn-sm" name="entity" value="sole_trader">Mark sole trader</button></form></dd>
+        <button class="btn btn-ghost btn-sm" name="entity" value="sole_trader">Mark sole trader</button></form></dd>{% endif %}
     <dt>Email</dt><dd>{% if lead.email %}{{ lead.email }} <span class="dim small">({{ lead.email_source or 'manual' }})</span>{% endif %}
       {% if email_block %}<div class="small amber">{{ email_block }}</div>{% endif %}
       <form class="row" style="margin-top:6px" hx-post="/leads/{{ lead.id }}/email" hx-target="#side-panel-body">

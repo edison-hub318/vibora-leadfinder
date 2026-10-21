@@ -303,6 +303,7 @@ MIGRATIONS: list[tuple[str, str, str]] = [
     ("searches", "country", "TEXT NOT NULL DEFAULT 'GB'"),
     ("emails", "campaign_id", "INTEGER REFERENCES campaigns(id)"),
     ("emails", "bounced_at", "TEXT"),
+    ("leads", "email_checked_at", "TEXT"),
 ]
 
 

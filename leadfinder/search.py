@@ -683,6 +683,7 @@ def run_search(
         for i, c in enumerate(qualified):
             if c.get("website") and c.get("website_status") != "social_only":
                 email, source = find_email(c["website"], clients, rules)
+                c["email_checked_at"] = now_db()
                 if email:
                     c["email"], c["email_source"] = email, source
             emit("enrich", {"done": i + 1, "total": len(qualified)})
@@ -774,7 +775,7 @@ LEAD_COLUMNS = (
     "website_status", "website_issues", "audit_json", "pagespeed_score", "audited_at", "existing_agency",
     "ai_dated_score", "ai_verdict", "ai_biggest_problem", "hook", "quality_flags", "entity_type", "entity_source",
     "company_number", "email", "email_source", "score", "owner_id", "duplicate_of", "blocked_reason", "search_id",
-    "country",
+    "country", "email_checked_at",
 )
 
 

@@ -12,14 +12,18 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from typing import Any
+from datetime import timedelta
+from typing import Any, Callable
 
 from . import db, emailer
 from .config import Settings
 from .emailer import NO_EMAIL_STATUSES, EmailError
 from .search import norm_country, SearchError
-from .timeutil import now_db
+from .config import load_website_rules
+from .enrich import find_email
+from .timeutil import now_db, now_utc, to_db
 from .users import log_activity
 
 # Leads worth emailing about their website. "ok"/"good" sites are a weak pitch, so they're opt-in.
@@ -162,6 +166,56 @@ def _candidates(conn: sqlite3.Connection, f: Filters, limit: int) -> list[dict[s
 
 
 # ---------------------------------------------------------------------------
+# Email lookup for the segment (so search -> campaign needs no extra step)
+# ---------------------------------------------------------------------------
+
+RECHECK_DAYS = 30
+
+
+def leads_to_check(conn: sqlite3.Connection, f: Filters, limit: int = 100) -> list[dict[str, Any]]:
+    """Segment leads with a real website, no email yet, and no email check in the last 30 days."""
+    where, args = _segment_sql(f)
+    cutoff = to_db(now_utc() - timedelta(days=RECHECK_DAYS))
+    rows = conn.execute(
+        f"""SELECT l.id, l.name, l.website FROM leads l WHERE {where}
+            AND l.website IS NOT NULL AND l.website != '' AND COALESCE(l.website_status,'') != 'social_only'
+            AND (l.email IS NULL OR l.email = '') AND (l.email_checked_at IS NULL OR l.email_checked_at < ?)
+            ORDER BY l.score DESC LIMIT ?""",
+        (*args, cutoff, limit),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def find_segment_emails(
+    conn: sqlite3.Connection, settings: Settings, clients: Any, user_id: int | None, f: Filters,
+    limit: int = 100, progress: Callable[[int, int], None] | None = None, workers: int = 5,
+) -> dict[str, int]:
+    """Check segment leads' own websites for a published email, 5 sites at a time."""
+    todo = leads_to_check(conn, f, limit)
+    if not todo or clients is None or getattr(clients, "fetcher", None) is None:
+        return {"checked": 0, "found": 0}
+    rules = load_website_rules(settings)
+    found = 0
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [(lead, pool.submit(find_email, lead["website"], clients, rules)) for lead in todo]
+        for i, (lead, fut) in enumerate(futures, 1):
+            try:
+                email, source = fut.result()
+            except Exception:
+                email, source = None, None
+            conn.execute("UPDATE leads SET email_checked_at=? WHERE id=?", (now_db(), lead["id"]))
+            if email:
+                conn.execute("UPDATE leads SET email=?, email_source=? WHERE id=? AND (email IS NULL OR email='')",
+                             (email, source, lead["id"]))
+                log_activity(conn, user_id, "email_found", f"Found {email}", lead["id"])
+                found += 1
+            db.commit(conn)
+            if progress:
+                progress(i, len(todo))
+    return {"checked": len(todo), "found": found}
+
+
+# ---------------------------------------------------------------------------
 # Create / extend
 # ---------------------------------------------------------------------------
 
@@ -169,6 +223,8 @@ def _candidates(conn: sqlite3.Connection, f: Filters, limit: int) -> list[dict[s
 class DraftResult:
     campaign_id: int
     drafted: int = 0
+    emails_checked: int = 0
+    emails_found: int = 0
     skipped: list[tuple[str, str]] = field(default_factory=list)
     counts: dict[str, int] = field(default_factory=dict)
     blocked: dict[str, int] = field(default_factory=dict)  # block reason -> count (among new drafts)
@@ -197,6 +253,8 @@ def create(
     template: str | None = None,
     followup_template: str | None = None,
     limit: int = 200,
+    clients: Any = None,
+    progress: Callable[[int, int], None] | None = None,
 ) -> DraftResult:
     name = " ".join((name or "").split())
     if not name:
@@ -216,16 +274,19 @@ def create(
     db.commit(conn)
     cid = int(cur.lastrowid)
     log_activity(conn, user_id, "campaign_create", f"Created campaign {name}", None, "Campaign")
-    return extend(conn, settings, user_id, cid, limit)
+    return extend(conn, settings, user_id, cid, limit, clients=clients, progress=progress)
 
 
 def extend(conn: sqlite3.Connection, settings: Settings, user_id: int | None, campaign: str | int,
-           limit: int = 200) -> DraftResult:
-    """Draft emails for leads that match the campaign and haven't been emailed yet."""
+           limit: int = 200, clients: Any = None, progress: Callable[[int, int], None] | None = None) -> DraftResult:
+    """Look up emails on matching leads' websites (when clients are given), then draft emails for
+    leads that match the campaign and haven't been emailed yet."""
     c = get(conn, campaign)
     f: Filters = c["filters"]
     template = _read_template(settings, c["template"])
-    res = DraftResult(campaign_id=c["id"], counts=segment_counts(conn, f))
+    looked = find_segment_emails(conn, settings, clients, user_id, f, progress=progress) if clients else {"checked": 0, "found": 0}
+    res = DraftResult(campaign_id=c["id"], counts=segment_counts(conn, f),
+                      emails_checked=looked["checked"], emails_found=looked["found"])
     for lead in _candidates(conn, f, limit * 3):
         if res.drafted >= limit:
             break

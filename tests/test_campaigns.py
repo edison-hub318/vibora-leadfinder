@@ -246,3 +246,19 @@ def test_warmup_ramps_daily_limit(conn, home):
     assert emailer.daily_limit(conn, s) == 10  # tests run on 16 Oct
     (home / ".env").write_text(env)
     assert emailer.daily_limit(conn, load_settings(home)) == 40
+
+
+def test_top_up_looks_up_emails_first(conn, settings, edison):
+    from .fakes import FakeFetcher, ok_page
+
+    site = "https://redhomehvac.com"
+    lid = us_lead(conn, name="RedHome HVAC", website=site, website_status="poor", email=None)
+    camp.create(conn, settings, edison.id, "auto", camp.make_filters("US"))
+    assert camp.get(conn, "auto") and conn.execute("SELECT COUNT(*) FROM emails").fetchone()[0] == 0
+    fetch = FakeFetcher({site: ok_page(site, '<a href="mailto:office@redhomehvac.com">Email us</a>')})
+    res = camp.extend(conn, settings, edison.id, "auto", clients=fake_clients(fetcher=fetch))
+    assert (res.emails_checked, res.emails_found, res.drafted) == (1, 1, 1)
+    assert conn.execute("SELECT email FROM leads WHERE id=?", (lid,)).fetchone()[0] == "office@redhomehvac.com"
+    # Checked once: a second top-up doesn't fetch the site again.
+    again = camp.extend(conn, settings, edison.id, "auto", clients=fake_clients(fetcher=FakeFetcher()))
+    assert again.emails_checked == 0

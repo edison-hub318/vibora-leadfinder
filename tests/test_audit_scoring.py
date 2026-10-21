@@ -235,3 +235,31 @@ def test_classify_command(conn, edison):
     lid2 = add_lead(conn, name="Other")
     assert classify_command(conn, fake_clients(), edison.id) == {"limited_company": 0, "likely_sole_trader": 0, "unknown": 0}
     assert conn.execute("SELECT entity_type FROM leads WHERE id=?", (lid2,)).fetchone()[0] == "unknown"
+
+
+def test_email_formats_found():
+    from leadfinder.enrich import emails_in_html
+
+    # Cloudflare protection: key 0x42 XOR "hi@ab.com"
+    cf = "42" + "".join(f"{ord(ch) ^ 0x42:02x}" for ch in "hi@ab.com")
+    html = (f'<a href="/cdn-cgi/l/email-protection" data-cfemail="{cf}">[email protected]</a>'
+            '<p>Write to office [at] redhomehvac [dot] com</p>'
+            '<script type="application/ld+json">{"email":"sales@redhomehvac.com"}</script>'
+            '<script src="https://cdn.example.net/bootstrap@5.3.0/dist/x.js"></script>'
+            '<img src="logo@2x.png">')
+    got = emails_in_html(html)
+    assert "hi@ab.com" in got and "office@redhomehvac.com" in got and "sales@redhomehvac.com" in got
+    assert not any("bootstrap" in e or "2x" in e for e in got)
+
+
+def test_find_email_follows_about_page(rules):
+    from .fakes import FakeFetcher, ok_page
+
+    site = "https://redhomehvac.com"
+    fetch = FakeFetcher({
+        site: ok_page(site, '<a href="/about-us">About us</a><p>No email here</p>'),
+        site + "/about-us": ok_page(site + "/about-us", "<p>Email info@redhomehvac.com</p>"),
+    })
+    email, source = find_email(site, fake_clients(fetcher=fetch), rules)
+    assert email == "info@redhomehvac.com" and source.endswith("/about-us")
+    assert len([u for u in fetch.calls if not u.endswith("robots.txt")]) <= 1 + 4  # homepage + max 4 more

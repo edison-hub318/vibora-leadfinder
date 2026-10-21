@@ -782,7 +782,21 @@ def _print_blocked(blocked: dict[str, int]) -> None:
         console.print(f"  [yellow]{n} blocked: {reason}[/]")
 
 
+def _email_progress():
+    progress = Progress(TextColumn("{task.description}"), BarColumn(), MofNCompleteColumn(), console=console, transient=True)
+    state: dict[str, int] = {}
+
+    def on(done: int, total: int) -> None:
+        if "t" not in state:
+            progress.start()
+            state["t"] = progress.add_task("Checking websites for emails", total=total)
+        progress.update(state["t"], completed=done)
+    return progress, on
+
+
 def _print_draft_result(res: camp_mod.DraftResult, name: str) -> None:
+    if res.emails_checked:
+        console.print(f"Checked {res.emails_checked} website(s) for emails: found {res.emails_found}.")
     cnt = res.counts
     console.print(
         f"Segment: [bold]{cnt.get('matched', 0)}[/] leads match, {cnt.get('with_email', 0)} have an email address, "
@@ -820,7 +834,12 @@ def campaign_create(
     user = c.require_user()
     try:
         f = camp_mod.make_filters(country, trade, town, website, min_score)
-        res = camp_mod.create(c.conn, c.settings, user.id, name, f, template, followup_template, limit)
+        progress, on = _email_progress()
+        try:
+            res = camp_mod.create(c.conn, c.settings, user.id, name, f, template, followup_template, limit,
+                                  clients=c.clients, progress=on)
+        finally:
+            progress.stop()
     except camp_mod.CampaignError as e:
         fail(str(e))
     console.print(f"[bold]Campaign '{name}'[/]: {f.describe()}")
@@ -832,10 +851,13 @@ def campaign_add(name: str, limit: int = typer.Option(200, "--limit")) -> None:
     """Top up a campaign with new matching leads (e.g. after more searches)."""
     c = ctx()
     user = c.require_user()
+    progress, on = _email_progress()
     try:
-        res = camp_mod.extend(c.conn, c.settings, user.id, name, limit)
+        res = camp_mod.extend(c.conn, c.settings, user.id, name, limit, clients=c.clients, progress=on)
     except camp_mod.CampaignError as e:
         fail(str(e))
+    finally:
+        progress.stop()
     _print_draft_result(res, name)
 
 

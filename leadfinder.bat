@@ -12,10 +12,12 @@ if not exist ".venv\Scripts\activate.bat" (
   exit /b 1
 )
 call ".venv\Scripts\activate.bat"
+REM Call the venv's leadfinder.exe by its full path: a bare "leadfinder" would find this .bat
+REM first (Windows looks in the current folder before PATH) and call itself forever.
 if "%~1"=="" (
-  leadfinder ui
+  ".venv\Scripts\leadfinder.exe" ui
 ) else (
-  leadfinder %*
+  ".venv\Scripts\leadfinder.exe" %*
 )
 set EXITCODE=%ERRORLEVEL%
 REM Keep the window open when double-clicked so you can read any messages.

@@ -470,13 +470,17 @@ def create_app(settings: Settings, clients_factory: Callable[[Settings], Clients
         if not lead:
             raise HTTPException(404)
         email_block = None
-        if lead["entity_type"] != "limited_company":
+        is_us = (lead.get("country") or "GB") == "US"
+        if is_us:
+            if not settings.business_address:
+                email_block = "US email needs your postal address: set BUSINESS_ADDRESS in .env"
+        elif lead["entity_type"] != "limited_company":
             email_block = ("Sole trader: email not allowed, call instead" if "sole" in lead["entity_type"]
                            else "Company type unknown: email blocked until confirmed as a limited company")
         audit_signals = json.loads(lead["audit_json"]) if lead.get("audit_json") else {}
         return render(request, conn, "partials/lead_panel.html", partial=True, lead=lead,
                       history=leads_mod.call_history(conn, lead_id), timeline=leads_mod.lead_timeline(conn, lead_id),
-                      email_block=email_block, signals=audit_signals, all_users=users.list_users(conn),
+                      email_block=email_block, is_us=is_us, signals=audit_signals, all_users=users.list_users(conn),
                       is_dnc=leads_mod.is_dnc(conn, lead["phone"]))
 
     @app.post("/leads/{lead_id}/assign", response_class=HTMLResponse)
@@ -731,14 +735,31 @@ def create_app(settings: Settings, clients_factory: Callable[[Settings], Clients
                                       str(form.get("town") or "") or None,
                                       [str(v) for v in form.getlist("website")] or None,
                                       int(str(form.get("min_score") or 0) or 0))
-            res = camp_mod.create(conn, settings, me(request).id, str(form.get("name") or ""), f,
-                                  limit=max(1, min(1000, int(str(form.get("limit") or 200) or 200))))
+            limit = max(1, min(1000, int(str(form.get("limit") or 200) or 200)))
+            to_check = len(camp_mod.leads_to_check(conn, f))
+            res = camp_mod.create(conn, settings, me(request).id, str(form.get("name") or ""), f, limit=limit)
         except (camp_mod.CampaignError, ValueError) as e:
             return outreach_reload(request, conn, str(e), "error")
+        if to_check:
+            start_email_lookup(res.campaign_id, me(request).id, limit)
+            return outreach_reload(request, conn, f"Drafted {res.drafted}. Checking {to_check} website(s) for emails in "
+                                                  "the background: refresh this page in a minute or two for more drafts")
         cnt = res.counts
         blocked = sum(res.blocked.values())
         return outreach_reload(request, conn, f"Drafted {res.drafted} ({cnt['matched']} match, {cnt['with_email']} with email"
                                               + (f", {blocked} blocked" if blocked else "") + ")")
+
+    def start_email_lookup(campaign_id: int, user_id: int, limit: int = 200) -> None:
+        """Check segment websites for emails, then draft for the new ones (can take a few minutes)."""
+        def worker() -> None:
+            c2 = open_conn()
+            try:
+                camp_mod.extend(c2, settings, user_id, campaign_id, limit, clients=clients())
+            except Exception:
+                pass  # the page shows whatever got drafted
+            finally:
+                c2.close()
+        threading.Thread(target=worker, daemon=True).start()
 
     @app.post("/campaigns/{campaign_id}/{action}", response_class=HTMLResponse)
     def campaign_action(request: Request, campaign_id: int, action: str, conn: sqlite3.Connection = Depends(get_conn)) -> Response:
@@ -749,8 +770,16 @@ def create_app(settings: Settings, clients_factory: Callable[[Settings], Clients
                 r = camp_mod.approve(conn, settings, uid, campaign_id)
                 msg = f"Approved {r.approved}" + (f", {sum(r.blocked.values())} blocked" if r.blocked else "")
             elif action == "add":
-                r2 = camp_mod.extend(conn, settings, uid, campaign_id)
-                msg = f"Added {r2.drafted} new draft(s)"
+                to_check = len(camp_mod.leads_to_check(conn, camp["filters"]))
+                if to_check:
+                    start_email_lookup(campaign_id, uid)
+                    msg = (f"Checking {to_check} website(s) for emails in the background: "
+                           "refresh this page in a minute or two to see the new drafts")
+                else:
+                    r2 = camp_mod.extend(conn, settings, uid, campaign_id)
+                    c_ = r2.counts
+                    msg = (f"Added {r2.drafted} new draft(s). {c_['matched']} leads match, {c_['with_email']} have an email"
+                           + ("" if r2.drafted else ": run more searches, or add addresses on a lead's panel"))
             elif action == "followup":
                 r3 = camp_mod.draft_followups(conn, settings, uid, campaign_id)
                 msg = f"Drafted {len(r3.created)} follow-up(s): approve to queue them"

@@ -12,6 +12,7 @@ from . import db
 from .audit import EMAIL_RE, _normalise_url, _Robots, classify_domain, host_of, parse_page
 from .clients import Clients, ExternalError
 from .config import Settings, load_website_rules
+from .timeutil import now_db
 from .trades import name_key, normalise_text
 from .users import log_activity
 
@@ -65,8 +66,57 @@ def rank_emails(emails: list[str], site_host: str) -> list[str]:
     return sorted(emails, key=key)
 
 
+# Pages most likely to show a contact email, by link text or URL. Checked after the homepage.
+CONTACT_WORDS = ("contact", "get-in-touch", "get in touch", "reach", "about", "quote", "estimate", "enquir")
+FALLBACK_PATHS = ("/contact", "/contact-us", "/about", "/about-us")
+MAX_EXTRA_PAGES = 4
+
+_CF_RE = re.compile(r'data-cfemail="([0-9a-fA-F]+)"')
+_OBFUSCATED_RE = re.compile(
+    r"([A-Za-z0-9._%+\-]+)\s*(?:\[at\]|\(at\)|\{at\}|\s+at\s+)\s*([A-Za-z0-9\-]+)"
+    r"((?:\s*(?:\[dot\]|\(dot\)|\{dot\}|\s+dot\s+|\.)\s*[A-Za-z]{2,}){1,3})",
+    re.I,
+)
+
+
+def _decode_cfemail(hexstr: str) -> str:
+    """Cloudflare's email protection hides addresses as hex XOR-ed with the first byte."""
+    try:
+        key = int(hexstr[:2], 16)
+        return "".join(chr(int(hexstr[i:i + 2], 16) ^ key) for i in range(2, len(hexstr), 2))
+    except ValueError:
+        return ""
+
+
+def emails_in_html(html: str) -> list[str]:
+    """Every address published on the page: mailto links, visible text, attributes and structured
+    data (raw HTML), Cloudflare-protected addresses, and 'name [at] domain [dot] com' spellings."""
+    page = parse_page(html)
+    found = list(page.mailto) + EMAIL_RE.findall(page.text) + EMAIL_RE.findall(html.replace("%40", "@"))
+    found += [_decode_cfemail(h) for h in _CF_RE.findall(html)]
+    for local, dom, rest in _OBFUSCATED_RE.findall(page.text):
+        tail = re.sub(r"\s*(?:\[dot\]|\(dot\)|\{dot\}|\s+dot\s+|\.)\s*", ".", rest, flags=re.I)
+        found.append(f"{local}@{dom}{tail}")
+    return _clean_emails(found)
+
+
+def _candidate_pages(base: str, links: list[tuple[str, str]]) -> list[str]:
+    out: list[str] = []
+    for href, text in links:
+        hay = (href + " " + text).lower()
+        if any(w in hay for w in CONTACT_WORDS) and not href.lower().startswith(("mailto:", "tel:", "#")):
+            url = urljoin(base, href).split("#")[0]
+            if url not in out:
+                out.append(url)
+    for path in FALLBACK_PATHS:
+        url = urljoin(base, path)
+        if url not in out:
+            out.append(url)
+    return out
+
+
 def find_email(website: str | None, clients: Clients, rules: dict[str, Any]) -> tuple[str | None, str | None]:
-    """Fetch the homepage and the contact page and return (email, url where it was found).
+    """Fetch the homepage, then up to 4 contact/about pages, and return (email, url where found).
     Only addresses visibly published on the business's own site are returned - never guessed."""
     if not website:
         return None, None
@@ -75,27 +125,25 @@ def find_email(website: str | None, clients: Clients, rules: dict[str, Any]) -> 
         return None, None
     home = _normalise_url(website)
     robots = _Robots(clients.fetcher)
-    pages: list[str] = []
+    links: list[tuple[str, str]] = []
     if robots.allowed(home):
         res = clients.fetcher.get(home, timeout=15)
         if res.ok:
-            final = res.final_url or home
-            page = parse_page(res.text)
-            found = _clean_emails(page.mailto + EMAIL_RE.findall(page.text))
+            home = res.final_url or home
+            found = emails_in_html(res.text)
             if found:
-                return rank_emails(found, host_of(final))[0], final
-            contact = next((h for h, t in page.links if "contact" in (h + " " + t).lower()), None)
-            pages.append(urljoin(final, contact) if contact else urljoin(final, "/contact"))
-            home = final
-    if not pages:
-        pages.append(urljoin(home, "/contact"))
-    for url in pages:
-        if host_of(url) != host_of(home) or not robots.allowed(url):
+                return rank_emails(found, host_of(home))[0], home
+            links = parse_page(res.text).links
+    tried = 0
+    for url in _candidate_pages(home, links):
+        if tried >= MAX_EXTRA_PAGES:
+            break
+        if host_of(url) != host_of(home) or url.rstrip("/") == home.rstrip("/") or not robots.allowed(url):
             continue
+        tried += 1
         res = clients.fetcher.get(url, timeout=15)
         if res.ok:
-            page = parse_page(res.text)
-            found = _clean_emails(page.mailto + EMAIL_RE.findall(page.text))
+            found = emails_in_html(res.text)
             if found:
                 return rank_emails(found, host_of(home))[0], res.final_url or url
     return None, None
@@ -114,6 +162,8 @@ def find_emails_command(
     out = []
     for r in rows:
         email, source = find_email(r["website"], clients, rules)
+        conn.execute("UPDATE leads SET email_checked_at=? WHERE id=?", (now_db(), r["id"]))
+        db.commit(conn)
         if email:
             conn.execute("UPDATE leads SET email=?, email_source=? WHERE id=?", (email, source, r["id"]))
             db.commit(conn)
